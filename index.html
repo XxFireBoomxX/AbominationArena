@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c1119">
+  <meta name="description" content="Abomination Arena — 2D игра за оцеляване срещу вълни от чудовища.">
+  <title>Abomination Arena</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <a class="brand" href="/" aria-label="Abomination Arena начало"><span class="brand-mark">A<span>✦</span></span><span>ABOMINATION<span class="brand-sub">ARENA / SURVIVAL PROTOCOL</span></span></a>
+      <div class="header-actions"><span class="live-label"><i></i> 2D · BROWSER EDITION</span><button class="icon-button" id="sound" aria-label="Включи звука" title="Звук">♪<span id="sound-label">OFF</span></button></div>
+    </header>
+    <section class="page-title"><div><p class="eyebrow">ENTER. SURVIVE. EVOLVE.</p><h1>Никой не излиза <em>същият.</em></h1></div><span class="version">01 / THE CONTAINMENT</span></section>
+    <div class="game-layout">
+      <section class="arena-panel" aria-label="Игрална арена">
+        <div class="arena-toolbar"><span><i class="status-dot"></i><span id="status">В ГОТОВНОСТ</span></span><span class="arena-location">SECTOR 07 <span>/</span> THE PIT</span><button id="pause" class="small-button" disabled>Ⅱ <span>Пауза</span></button></div>
+        <div class="canvas-wrap" id="arena">
+          <canvas id="game" width="1280" height="720" tabindex="0" aria-label="2D арена. Движение с WASD или стрелките, прицелване с мишката, стрелба със задържане и скок с интервал."></canvas>
+          <div class="overlay" id="overlay">
+            <div class="overlay-content" id="overlay-content"></div>
+          </div>
+          <div id="wave-toast" class="wave-toast" aria-live="polite"></div>
+          <div class="touch-controls"><div id="joystick" aria-label="Плъзни за движение"><span></span></div><button id="touch-dash" aria-label="Рязък скок">↯</button></div>
+        </div>
+        <div class="arena-footer"><span><span class="mint">●</span> <span id="footer-status">Системата е готова</span></span><span>БЕЗ ПОЩАДА. БЕЗ КРАЙ.</span></div>
+      </section>
+      <aside class="sidebar">
+        <section class="stat-card wave-card"><p class="eyebrow">ТЕКУЩА ВЪЛНА</p><div class="wave-number"><span id="wave">01</span><span class="wave-tag">THREAT LEVEL<br><b id="threat">НИСЪК</b></span></div><div class="progress-track"><div id="wave-progress"></div></div><p class="muted small" id="wave-detail">Чудовищата те очакват.</p></section>
+        <section class="stat-card"><div class="stat-heading"><span class="eyebrow">ЖИЗНЕНИ ПОКАЗАТЕЛИ</span><span class="mint" id="health-number">100 / 100</span></div><div class="health-track"><div id="health"></div></div><div class="dash-info"><span>↯ Рязък скок</span><b id="dash-status">ГОТОВ</b></div></section>
+        <section class="stat-card score-card"><p class="eyebrow">ТВОЯТ РЕЗУЛТАТ</p><div class="score" id="score">000000</div><div class="score-bottom"><span>Победени <b id="kills">0</b></span><span>Време <b id="time">00:00</b></span></div></section>
+        <section class="record-card"><span class="record-icon">◇</span><div><p class="eyebrow">ЛИЧЕН РЕКОРД</p><b id="record">000000</b></div><span class="record-arrow">↗</span></section>
+        <section class="tip-card"><span>✦</span><p>Не спирай да се движиш.<br><span>След всяка вълна избери подобрение.</span></p></section>
+      </aside>
+    </div>
+    <footer class="controls"><span class="eyebrow">КАК СЕ ИГРАЕ</span><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Движение</span></div><div><span class="mouse-icon">↖</span><span>Прицелване и стрелба</span></div><div><kbd>SPACE</kbd><span>Рязък скок</span></div><div><kbd>P</kbd><span>Пауза</span></div></footer>
+    <p class="bottom-note">Една арена. Безкрайни вълни. Колко ще издържиш?</p>
+  </main>
+  <script type="module" src="/src/game.js"></script>
+</body>
+</html>
