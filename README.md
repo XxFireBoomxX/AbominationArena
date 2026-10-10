@@ -54,10 +54,18 @@ Enemies are selected randomly from the unlocked pool. The first three waves keep
 
 Dashed lines and ground circles warn before attacks; move sideways, leave the circle or dash. All damage shares the 0.8-second protection after a hit, including overlapping curses. Dash prevents magic damage and keeps its full speed inside curses. Killing a caster during windup cancels its cast; already deployed spells last until expiry or wave completion. Pause freezes attacks, and restart clears them. Expand the Bulgarian enemy dossier below the arena for attack descriptions and unlock waves.
 
+## Death report
+
+Every death shows the score, reached wave, combat time and kills, with a detailed report directly below the arena. Use “ПОДРОБНА СТАТИСТИКА” to jump to it, or restart from either button.
+
+The report includes completed waves, actual damage dealt/taken, restored health, shots, projectile accuracy, successful dashes, kills by enemy type, each weapon's shots/accuracy/damage/kills, upgrade selections, maximum health and the enemy/attack responsible for the lethal hit.
+
+Accuracy is hits divided by fired projectiles; a shotgun blast is one shot and seven projectiles. Projectiles still in flight at death count as fired. Damage excludes overkill and invulnerability-blocked hits; healing excludes health that was already full. Counters span the entire run, freeze on death and reset for the next run. Detailed reports are shown for the current run; only the existing best score is stored across page reloads.
+
 ## Test
 
 ```sh
 npm test
 ```
 
-The 37 tests exercise unrestricted movement, camera and targeting transforms, sector generation, off-screen spawning, distant pursuers, weapon cadence/spread/range, switching, shared upgrades, combat, enemy unlocks, magic collision, curse slowing, committed rushes, dash protection, pause, hazard cleanup, wave progression and game-over behavior. The interface is in Bulgarian.
+The 45 tests exercise unrestricted movement, camera and targeting transforms, sector generation, off-screen spawning, distant pursuers, weapon cadence/spread/range, switching, shared upgrades, combat, enemy unlocks, magic collision, curse slowing, committed rushes, dash protection, pause, hazard cleanup, wave progression, game-over behavior and run statistics (pellet accuracy, overkill, weapon attribution, all death causes, healing and reset). The interface is in Bulgarian.

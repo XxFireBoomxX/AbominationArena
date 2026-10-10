@@ -1,6 +1,6 @@
 import { WIDTH, spawnPosition } from './world.js';
-import { WEAPONS } from './weapons.js';
-import { createEnemy, enemyTypeFor, ENEMIES } from './enemies.js';
+import { WEAPONS, WEAPON_IDS } from './weapons.js';
+import { createEnemy, enemyTypeFor, ENEMIES, ENEMY_IDS } from './enemies.js';
 export { WIDTH, HEIGHT } from './world.js';
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -36,7 +36,26 @@ export class Arena {
     this.spawned = 0;
     this.waveKills = 0;
     this.target = 8;
+    this.stats = {
+      shots: 0, projectiles: 0, hits: 0, damageDealt: 0, damageTaken: 0, healing: 0, dashes: 0,
+      upgrades: { power: 0, speed: 0, health: 0 }, lastHit: null,
+      killsByType: Object.fromEntries(ENEMY_IDS.map(id => [id, 0])),
+      weapons: Object.fromEntries(WEAPON_IDS.map(id => [id, { shots: 0, projectiles: 0, hits: 0, damage: 0, kills: 0 }]))
+    };
     this.state = 'playing';
+  }
+  getRunReport() {
+    const accuracy = stats => stats.projectiles ? stats.hits / stats.projectiles * 100 : 0;
+    // Return independent data so a report remains intact after the next reset.
+    return {
+      score: this.score, wave: this.wave, completedWaves: this.wave - 1, time: this.time, kills: this.kills,
+      maxHp: this.player.maxHp, shots: this.stats.shots, projectiles: this.stats.projectiles,
+      hits: this.stats.hits, accuracy: accuracy(this.stats), damageDealt: this.stats.damageDealt,
+      damageTaken: this.stats.damageTaken, healing: this.stats.healing, dashes: this.stats.dashes,
+      upgrades: { ...this.stats.upgrades }, killsByType: { ...this.stats.killsByType },
+      deathCause: this.player.hp <= 0 && this.stats.lastHit ? { ...this.stats.lastHit } : null,
+      weapons: Object.fromEntries(WEAPON_IDS.map(id => [id, { ...this.stats.weapons[id], accuracy: accuracy(this.stats.weapons[id]) }]))
+    };
   }
   get weapon() { return WEAPONS[this.weaponId]; }
   get damage() { return this.weapon.damage * (1 + this.powerLevel * .4); }
@@ -55,7 +74,10 @@ export class Arena {
     if (type === 'power') this.powerLevel++;
     if (type === 'speed') this.speedLevel++;
     if (type === 'health') this.player.maxHp += 20;
+    this.stats.upgrades[type]++;
+    const beforeHp = this.player.hp;
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + 35);
+    this.stats.healing += this.player.hp - beforeHp;
     this.wave++;
     this.target = 8 + (this.wave - 1) * 4;
     this.waveKills = 0;
@@ -82,10 +104,13 @@ export class Arena {
     this.burst(x, y, enemy.color, 9);
     this.spawned++;
   }
-  hurtPlayer(damage) {
+  hurtPlayer(damage, source = null) {
     const p = this.player;
     if (p.invulnerable > 0 || p.hp <= 0) return false;
-    p.hp = Math.max(0, p.hp - damage);
+    const lostHp = Math.min(p.hp, damage);
+    p.hp -= lostHp;
+    this.stats.damageTaken += lostHp;
+    this.stats.lastHit = source ? { ...source } : null;
     p.invulnerable = .8;
     this.burst(p.x, p.y, '#ff6788', 18);
     this.events.push({ type: 'hurt' });
@@ -120,11 +145,11 @@ export class Arena {
           if (enemy.type === 'hexer') {
             this.hostileBullets.push({ x: enemy.x + attack.dx * 28, y: enemy.y + attack.dy * 28,
               vx: attack.dx * ability.speed, vy: attack.dy * ability.speed,
-              radius: ability.radius, life: ability.life, damage: ability.damage, color: enemy.color });
+              radius: ability.radius, life: ability.life, damage: ability.damage, color: enemy.color, enemyType: enemy.type });
             enemy.attack = null;
           } else if (enemy.type === 'shaman') {
             this.zones.push({ x: attack.targetX, y: attack.targetY, radius: ability.radius,
-              warning: ability.warning, life: ability.duration, damage: ability.damage, slow: ability.slow, color: enemy.color });
+              warning: ability.warning, life: ability.duration, damage: ability.damage, slow: ability.slow, color: enemy.color, enemyType: enemy.type });
             enemy.attack = null;
           } else {
             attack.stage = 'active'; attack.remaining = ability.duration;
@@ -147,7 +172,7 @@ export class Arena {
       }
     }
     const touching = charging ? segmentDistance(p, prevX, prevY, enemy.x, enemy.y) < p.radius + enemy.radius : distance(p, enemy) < p.radius + enemy.radius;
-    if (touching && this.hurtPlayer(charging ? ability.damage : enemy.type === 'tank' ? 22 : 12) && !charging) {
+    if (touching && this.hurtPlayer(charging ? ability.damage : enemy.type === 'tank' ? 22 : 12, { enemyType: enemy.type, attack: charging ? 'rush' : 'contact' }) && !charging) {
       enemy.x -= dx / d * 32; enemy.y -= dy / d * 32;
     }
   }
@@ -174,6 +199,7 @@ export class Arena {
     if (length > 1) { mx /= length; my /= length; }
     if (Number.isFinite(input.aimX) && Number.isFinite(input.aimY)) p.angle = Math.atan2(input.aimY - p.y, input.aimX - p.x);
     if (input.dash && p.dashCooldown === 0) {
+      this.stats.dashes++;
       p.dashCooldown = 2.8;
       p.dashTime = .18;
       p.invulnerable = Math.max(p.invulnerable, .3);
@@ -194,6 +220,9 @@ export class Arena {
     this.muzzleTime = Math.max(0, this.muzzleTime - dt);
     if (input.fire && this.shotTimer === 0) {
       const weapon = this.weapon;
+      this.stats.shots++; this.stats.projectiles += weapon.pellets;
+      this.stats.weapons[weapon.id].shots++;
+      this.stats.weapons[weapon.id].projectiles += weapon.pellets;
       for (let i = 0; i < weapon.pellets; i++) {
         const offset = weapon.pellets > 1 ? (i / (weapon.pellets - 1) - .5) * weapon.spread : weapon.spread ? (this.random() - .5) * weapon.spread : 0;
         const angle = p.angle + offset, dx = Math.cos(angle), dy = Math.sin(angle);
@@ -220,12 +249,18 @@ export class Arena {
         // Segment collision prevents fast bullets passing through small enemies.
         const hitDistance = segmentDistance(enemy, prevX, prevY, bullet.x, bullet.y);
         if (hitDistance < enemy.radius + bullet.radius) {
+          const dealt = Math.min(enemy.hp, bullet.damage);
+          this.stats.hits++; this.stats.damageDealt += dealt;
+          const weaponStats = this.stats.weapons[bullet.weaponId];
+          if (weaponStats) { weaponStats.hits++; weaponStats.damage += dealt; }
           enemy.hp -= bullet.damage;
           enemy.hit = .1;
           bullet.life = 0;
           this.burst(bullet.x, bullet.y, enemy.color, 5);
           if (enemy.hp <= 0) {
             this.kills++;
+            this.stats.killsByType[enemy.type]++;
+            if (weaponStats) weaponStats.kills++;
             this.waveKills++;
             this.score += enemy.points;
             this.burst(enemy.x, enemy.y, enemy.color, 16);
@@ -242,12 +277,12 @@ export class Arena {
       bullet.x += bullet.vx * travelTime; bullet.y += bullet.vy * travelTime;
       bullet.life -= dt;
       if (segmentDistance(p, prevX, prevY, bullet.x, bullet.y) < p.radius + bullet.radius) {
-        this.hurtPlayer(bullet.damage); bullet.life = 0;
+        this.hurtPlayer(bullet.damage, { enemyType: bullet.enemyType || 'hexer', attack: 'bolt' }); bullet.life = 0;
       }
     }
     this.hostileBullets = this.hostileBullets.filter(b => b.life > 0 && distance(p, b) <= WIDTH * 2);
     for (const zone of this.zones) {
-      if (zone.warning === 0 && distance(p, zone) < p.radius + zone.radius) this.hurtPlayer(zone.damage);
+      if (zone.warning === 0 && distance(p, zone) < p.radius + zone.radius) this.hurtPlayer(zone.damage, { enemyType: zone.enemyType || 'shaman', attack: 'curse' });
     }
     for (const particle of this.particles) {
       particle.x += particle.vx * dt;

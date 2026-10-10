@@ -16,6 +16,7 @@ let best = 0;
 try { best = Number(localStorage.getItem('abomination-record')) || 0; } catch { /* Storage may be unavailable in private mode. */ }
 const padded = n => String(n).padStart(6, '0');
 const timeLabel = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const numberLabel = value => value.toLocaleString('bg-BG', { maximumFractionDigits: 1 });
 $('record').textContent = padded(best);
 for (const id of ENEMY_IDS) {
   const enemy = ENEMIES[id], entry = document.createElement('article');
@@ -117,10 +118,10 @@ $('pause').addEventListener('click', pause);
 window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   const nativeControl = event.target.closest('button, summary, a');
-  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && !nativeControl) event.preventDefault();
+  if (game.state === 'playing' && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && !nativeControl) event.preventDefault();
   if (['p', 'escape'].includes(key) && !event.repeat) pause();
   if (['1', '2', '3'].includes(key) && !event.repeat) equipWeapon(WEAPON_IDS[Number(key) - 1]);
-  if (key === ' ' && !event.repeat && !nativeControl) dash = true;
+  if (game.state === 'playing' && key === ' ' && !event.repeat && !nativeControl) dash = true;
   keys.add(key);
 });
 window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
@@ -154,11 +155,48 @@ $('joystick').addEventListener('pointermove', moveJoystick);
 for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) $('joystick').addEventListener(eventName, () => { joystickPointer = null; touch.active = false; touch.x = 0; touch.y = 0; $('joystick').firstElementChild.style.transform = ''; });
 $('touch-dash').addEventListener('pointerdown', event => { event.preventDefault(); dash = true; });
 
+function showRunReport(report) {
+  const metric = (label, value) => `<div class="report-metric"><dt>${label}</dt><dd>${value}</dd></div>`;
+  const cause = report.deathCause;
+  const attackNames = { contact: 'удар в близък бой', rush: 'засилване', bolt: 'магически снаряд', curse: 'прокълната зона' };
+  const causeLabel = cause ? `${ENEMIES[cause.enemyType]?.name || 'Неизвестен враг'} · ${attackNames[cause.attack] || 'атака'}` : 'Неизвестна причина';
+  $('run-report').innerHTML = `
+    <div class="report-heading"><div><p class="eyebrow">SURVIVAL PROTOCOL / RUN REPORT</p><h2 id="report-title">Статистика на опита</h2></div><span class="report-score">${numberLabel(report.score)}<small>ТОЧКИ</small></span></div>
+    <p class="report-cause">Последен удар: <strong>${causeLabel}</strong></p>
+    <dl class="report-metrics">
+      ${metric('Време в битка', timeLabel(report.time))}
+      ${metric('Достигната вълна', report.wave)}
+      ${metric('Преминати вълни', report.completedWaves)}
+      ${metric('Нанесени щети', numberLabel(report.damageDealt))}
+      ${metric('Получени щети', numberLabel(report.damageTaken))}
+      ${metric('Възстановен живот', numberLabel(report.healing))}
+      ${metric('Изстрели', numberLabel(report.shots))}
+      ${metric('Точност на снарядите', numberLabel(report.accuracy) + '%')}
+      ${metric('Рязки скокове', numberLabel(report.dashes))}
+    </dl>
+    <p class="report-note">${numberLabel(report.hits)} попадения / ${numberLabel(report.projectiles)} снаряда. Всяка сачма се брои отделно; неизползвано оръжие има 0% точност.</p>
+    <h3>Победени противници <span>${numberLabel(report.kills)} общо</span></h3>
+    <dl class="report-enemies">${ENEMY_IDS.map(id => `<div style="--enemy-color:${ENEMIES[id].color}"><dt>${ENEMIES[id].name}</dt><dd>${numberLabel(report.killsByType[id])}</dd></div>`).join('')}</dl>
+    <h3>Снаряжение</h3>
+    <table class="report-weapons"><caption class="visually-hidden">Статистика за всяко оръжие</caption><thead><tr><th scope="col">Оръжие</th><th scope="col">Изстрели</th><th scope="col">Точност</th><th scope="col">Щети</th><th scope="col">Победени</th></tr></thead><tbody>${WEAPON_IDS.map(id => {
+      const stats = report.weapons[id];
+      return `<tr><th scope="row" style="color:${WEAPONS[id].color}">${WEAPONS[id].name}</th><td>${numberLabel(stats.shots)}</td><td>${numberLabel(stats.accuracy)}%</td><td>${numberLabel(stats.damage)}</td><td>${numberLabel(stats.kills)}</td></tr>`;
+    }).join('')}</tbody></table>
+    <h3>Подобрения</h3>
+    <dl class="report-upgrades">${metric('Сила', report.upgrades.power)}${metric('Бърза стрелба', report.upgrades.speed)}${metric('Броня', report.upgrades.health)}</dl>
+    <p class="report-note">Максимален живот: ${numberLabel(report.maxHp)}. Щетите отчитат реално отнетия живот. Времето включва само активната битка.</p>
+    <button class="primary-button report-restart" id="report-restart">НОВ ОПИТ <span>↻</span></button>`;
+  $('report-restart').addEventListener('click', () => { start(); canvas.scrollIntoView({ block: 'center' }); });
+}
+
 function syncOverlay() {
   if (previousState === game.state) return;
   previousState = game.state;
   const overlay = $('overlay'), content = $('overlay-content');
   overlay.classList.toggle('hidden', game.state === 'playing');
+  overlay.classList.toggle('death-overlay', game.state === 'gameover');
+  $('run-report').hidden = game.state !== 'gameover';
+  $('weapon-panel').hidden = game.state === 'gameover';
   $('pause').disabled = !['playing', 'paused'].includes(game.state);
   $('pause').innerHTML = game.state === 'paused' ? '▷ <span>Продължи</span>' : 'Ⅱ <span>Пауза</span>';
   $('status').textContent = { ready: 'В ГОТОВНОСТ', playing: 'БИТКАТА Е В ХОД', paused: 'ПАУЗА', upgrade: 'ВЪЛНАТА Е ПРЕМИНАТА', gameover: 'СИГНАЛЪТ Е ЗАГУБЕН' }[game.state];
@@ -174,14 +212,22 @@ function syncOverlay() {
     content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Избери подобрение. Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+40% от базовите щети<br>за всички оръжия</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
     content.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => { game.upgrade(button.dataset.upgrade); clearInput(); syncOverlay(); waveToast(); }));
   } else if (game.state === 'gameover') {
+    clearInput();
+    clearTimeout(toastTimer); $('wave-toast').classList.remove('show');
+    const report = game.getRunReport();
     const newRecord = game.score > best;
     if (newRecord) {
       best = game.score;
       try { localStorage.setItem('abomination-record', String(best)); } catch { /* The current session still retains the record. */ }
       $('record').textContent = padded(best);
     }
-    content.innerHTML = '<div class="overlay-badge">' + (newRecord ? 'НОВ ЛИЧЕН РЕКОРД' : 'ПРОТОКОЛЪТ ПРИКЛЮЧИ') + '</div><h2>До следващия <span>път.</span></h2><p>' + game.score.toLocaleString('bg-BG') + ' точки · ' + game.kills + ' победени · ' + timeLabel(game.time) + '<br>Достигна вълна ' + game.wave + '.</p><button class="primary-button" id="restart">ОПИТАЙ ОТНОВО <span>↻</span></button>';
+    showRunReport(report);
+    content.innerHTML = `<div class="overlay-badge">${newRecord ? 'НОВ ЛИЧЕН РЕКОРД' : 'ПРОТОКОЛЪТ ПРИКЛЮЧИ'}</div><h2>Опитът <span>приключи.</span></h2><div class="death-score">${numberLabel(report.score)} <small>ТОЧКИ</small></div><dl class="death-summary"><div><dt>Вълна</dt><dd>${report.wave}</dd></div><div><dt>Време</dt><dd>${timeLabel(report.time)}</dd></div><div><dt>Победени</dt><dd>${numberLabel(report.kills)}</dd></div></dl><button class="primary-button" id="restart">ОПИТАЙ ОТНОВО <span>↻</span></button><button class="report-link" id="view-report">ПОДРОБНА СТАТИСТИКА ↓</button>`;
     $('restart').addEventListener('click', start);
+    $('view-report').addEventListener('click', () => {
+      $('run-report').focus({ preventScroll: true });
+      $('run-report').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'instant' : 'smooth' });
+    });
   }
   if (game.state !== 'playing') content.querySelector('button')?.focus({ preventScroll: true });
 }
