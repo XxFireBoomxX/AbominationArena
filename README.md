@@ -14,6 +14,19 @@ npm run dev
 
 The server listens on port 3000. Set `PORT` to use another port. There is no dependency installation or build step. For static hosting, publish `index.html`, `styles.css` and `src/` at the site root.
 
+## GitHub Pages
+
+The repository includes [a Pages workflow](.github/workflows/pages.yml). It runs the tests, uploads only the static game files and deploys them after game changes reach `main`. No personal token, package installation or backend server is needed on the host. Relative asset and home links support both a site root and the `/AbominationArena/` project path.
+
+One-time setup by a repository administrator:
+
+1. Open [Settings → Pages](https://github.com/XxFireBoomxX/AbominationArena/settings/pages).
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. Open [Actions → Deploy game to GitHub Pages](https://github.com/XxFireBoomxX/AbominationArena/actions/workflows/pages.yml) and choose **Run workflow → main**. This also retries deployment if the first automatic run happened before Pages was enabled.
+4. Wait for the deployment to succeed. The `github-pages` environment in the run shows the published address.
+
+The expected default address is **https://xxfireboomxx.github.io/AbominationArena/**. Adding the workflow alone does not establish that the site is live; Pages must be enabled and the deployment must complete. For free Pages hosting, the repository must be public unless the account's plan supports private-repository Pages.
+
 ## Controls
 
 - WASD or arrows: move
