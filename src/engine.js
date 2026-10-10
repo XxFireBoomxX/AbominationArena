@@ -1,5 +1,5 @@
-export const WIDTH = 1280;
-export const HEIGHT = 720;
+import { WIDTH, spawnPosition } from './world.js';
+export { WIDTH, HEIGHT } from './world.js';
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 export class Arena {
@@ -9,7 +9,7 @@ export class Arena {
     this.state = 'ready';
   }
   reset() {
-    this.player = { x: WIDTH / 2, y: HEIGHT / 2, radius: 17, hp: 100, maxHp: 100, angle: 0, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0 };
+    this.player = { x: 0, y: 0, radius: 17, hp: 100, maxHp: 100, angle: 0, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0 };
     this.enemies = [];
     this.bullets = [];
     this.particles = [];
@@ -50,10 +50,7 @@ export class Arena {
     }
   }
   spawnEnemy() {
-    const side = Math.floor(this.random() * 4);
-    let x, y;
-    if (side < 2) { x = side === 0 ? 35 : WIDTH - 35; y = 35 + this.random() * (HEIGHT - 70); }
-    else { x = 35 + this.random() * (WIDTH - 70); y = side === 2 ? 35 : HEIGHT - 35; }
+    const { x, y } = spawnPosition(this.player, this.random);
     const roll = this.random();
     const type = this.wave >= 3 && roll < .25 ? 'tank' : this.wave >= 2 && roll < .55 ? 'runner' : 'crawler';
     const stats = { crawler: { hp: 45, speed: 80, radius: 19, color: '#f27899', points: 100 }, runner: { hp: 30, speed: 145, radius: 14, color: '#b294f9', points: 150 }, tank: { hp: 120, speed: 55, radius: 29, color: '#f1ba77', points: 250 } }[type];
@@ -87,8 +84,6 @@ export class Arena {
       p.y += p.dashY * 850 * dt;
       this.burst(p.x, p.y, '#a1f5ca', 2);
     } else { p.x += mx * 250 * dt; p.y += my * 250 * dt; }
-    p.x = clamp(p.x, 30, WIDTH - 30);
-    p.y = clamp(p.y, 30, HEIGHT - 30);
     this.shotTimer = Math.max(0, this.shotTimer - dt);
     if (input.fire && this.shotTimer === 0) {
       const dx = Math.cos(p.angle), dy = Math.sin(p.angle);
@@ -102,6 +97,12 @@ export class Arena {
       this.spawnTimer = Math.max(.25, .95 - this.wave * .055);
     }
     for (const enemy of this.enemies) {
+      // Reuse distant pursuers, preserving their health and wave membership.
+      // This keeps an unfinished wave reachable after a long journey.
+      if (distance(p, enemy) > WIDTH * 2) {
+        Object.assign(enemy, spawnPosition(p, this.random));
+        this.burst(enemy.x, enemy.y, enemy.color, 9);
+      }
       const dx = p.x - enemy.x, dy = p.y - enemy.y, d = Math.hypot(dx, dy) || 1;
       enemy.x += dx / d * enemy.speed * dt;
       enemy.y += dy / d * enemy.speed * dt;
@@ -143,7 +144,7 @@ export class Arena {
       }
     }
     this.enemies = this.enemies.filter(e => e.hp > 0);
-    this.bullets = this.bullets.filter(b => b.life > 0 && b.x > 0 && b.x < WIDTH && b.y > 0 && b.y < HEIGHT);
+    this.bullets = this.bullets.filter(b => b.life > 0);
     for (const particle of this.particles) {
       particle.x += particle.vx * dt;
       particle.y += particle.vy * dt;

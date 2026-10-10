@@ -17,9 +17,9 @@
     <section class="page-title"><div><p class="eyebrow">ENTER. SURVIVE. EVOLVE.</p><h1>Никой не излиза <em>същият.</em></h1></div><span class="version">01 / THE CONTAINMENT</span></section>
     <div class="game-layout">
       <section class="arena-panel" aria-label="Игрална арена">
-        <div class="arena-toolbar"><span><i class="status-dot"></i><span id="status">В ГОТОВНОСТ</span></span><span class="arena-location">SECTOR 07 <span>/</span> THE PIT</span><button id="pause" class="small-button" disabled>Ⅱ <span>Пауза</span></button></div>
+        <div class="arena-toolbar"><span><i class="status-dot"></i><span id="status">В ГОТОВНОСТ</span></span><span class="arena-location" id="sector">SECTOR 0 : 0</span><button id="pause" class="small-button" disabled>Ⅱ <span>Пауза</span></button></div>
         <div class="canvas-wrap" id="arena">
-          <canvas id="game" width="1280" height="720" tabindex="0" aria-label="2D арена. Движение с WASD или стрелките, прицелване с мишката, стрелба със задържане и скок с интервал."></canvas>
+          <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Безкрайна 2D арена. Движение с WASD или стрелките, прицелване с мишката, стрелба със задържане и скок с интервал."></canvas>
           <div class="overlay" id="overlay">
             <div class="overlay-content" id="overlay-content"></div>
           </div>
@@ -37,7 +37,7 @@
       </aside>
     </div>
     <footer class="controls"><span class="eyebrow">КАК СЕ ИГРАЕ</span><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Движение</span></div><div><span class="mouse-icon">↖</span><span>Прицелване и стрелба</span></div><div><kbd>SPACE</kbd><span>Рязък скок</span></div><div><kbd>P</kbd><span>Пауза</span></div></footer>
-    <p class="bottom-note">Една арена. Безкрайни вълни. Колко ще издържиш?</p>
+    <p class="bottom-note">Безкрайна арена. Безкрайни вълни. Колко ще издържиш?</p>
   </main>
   <script type="module" src="/src/game.js"></script>
 </body>

@@ -1,4 +1,5 @@
 import { Arena, WIDTH, HEIGHT } from './engine.js';
+import { cameraFor, screenToWorld, inView, visibleSectors, SECTOR_SIZE } from './world.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game');
@@ -143,7 +144,8 @@ function updateHUD() {
   $('score').textContent = padded(game.score);
   $('kills').textContent = game.kills;
   $('time').textContent = timeLabel(game.time);
-  $('footer-status').textContent = game.state === 'playing' ? 'Дръж чудовищата на разстояние' : game.state === 'gameover' ? 'Връзката е прекъсната' : 'Системата е готова';
+  $('footer-status').textContent = game.state === 'playing' ? `X ${Math.round(p.x)} · Y ${Math.round(p.y)}` : game.state === 'gameover' ? 'Връзката е прекъсната' : 'Системата е готова';
+  $('sector').textContent = `SECTOR ${Math.floor(p.x / SECTOR_SIZE)} : ${Math.floor(p.y / SECTOR_SIZE)}`;
 }
 
 function circle(x, y, r, fill, stroke) {
@@ -151,33 +153,41 @@ function circle(x, y, r, fill, stroke) {
   if (fill) { ctx.fillStyle = fill; ctx.fill(); }
   if (stroke) { ctx.strokeStyle = stroke; ctx.stroke(); }
 }
-function drawBackground(t) {
-  ctx.fillStyle = '#101b22'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
-  const light = ctx.createRadialGradient(WIDTH / 2, HEIGHT / 2, 0, WIDTH / 2, HEIGHT / 2, WIDTH * .65);
+function drawBackground(t, camera) {
+  ctx.fillStyle = '#101b22'; ctx.fillRect(camera.x, camera.y, WIDTH, HEIGHT);
+  const light = ctx.createRadialGradient(game.player.x, game.player.y, 0, game.player.x, game.player.y, WIDTH * .65);
   light.addColorStop(0, '#1c343230'); light.addColorStop(1, '#020a1170');
-  ctx.fillStyle = light; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = light; ctx.fillRect(camera.x, camera.y, WIDTH, HEIGHT);
   ctx.lineWidth = 1; ctx.strokeStyle = '#8cc3b308';
   ctx.beginPath();
-  for (let x = 0; x <= WIDTH; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, HEIGHT); }
-  for (let y = 0; y <= HEIGHT; y += 40) { ctx.moveTo(0, y); ctx.lineTo(WIDTH, y); }
+  for (let x = Math.floor(camera.x / 40) * 40; x <= camera.x + WIDTH; x += 40) { ctx.moveTo(x, camera.y); ctx.lineTo(x, camera.y + HEIGHT); }
+  for (let y = Math.floor(camera.y / 40) * 40; y <= camera.y + HEIGHT; y += 40) { ctx.moveTo(camera.x, y); ctx.lineTo(camera.x + WIDTH, y); }
   ctx.stroke();
-  ctx.strokeStyle = '#6ab39d14'; ctx.lineWidth = 2;
-  circle(WIDTH / 2, HEIGHT / 2, 158, null, '#6ab39d12');
-  circle(WIDTH / 2, HEIGHT / 2, 190, null, '#6ab39d08');
-  ctx.setLineDash([6, 16]); circle(WIDTH / 2, HEIGHT / 2, 210, null, '#6ab39d15'); ctx.setLineDash([]);
-  ctx.strokeStyle = '#55826f45'; ctx.lineWidth = 2; ctx.strokeRect(20, 20, WIDTH - 40, HEIGHT - 40);
-  const corners = [[20, 20, 1, 1], [WIDTH - 20, 20, -1, 1], [20, HEIGHT - 20, 1, -1], [WIDTH - 20, HEIGHT - 20, -1, -1]];
-  ctx.strokeStyle = '#a1f5ca66'; ctx.lineWidth = 3;
-  for (const [x, y, dx, dy] of corners) { ctx.beginPath(); ctx.moveTo(x + dx * 50, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * 50); ctx.stroke(); }
-  ctx.fillStyle = '#aacabd18'; ctx.font = '10px monospace';
-  ctx.fillText('CONTAINMENT ZONE / 07', 44, HEIGHT - 39);
-  ctx.textAlign = 'right'; ctx.fillText('NO EXTRACTION AVAILABLE', WIDTH - 44, HEIGHT - 39); ctx.textAlign = 'left';
-  // Decorative floor vents and quiet ambient motes.
-  for (const [x, y] of [[100, 100], [WIDTH - 145, 100], [100, HEIGHT - 140], [WIDTH - 145, HEIGHT - 140]]) {
-    ctx.fillStyle = '#0b141b'; ctx.fillRect(x, y, 45, 40); ctx.strokeStyle = '#2d4149'; ctx.lineWidth = 2;
-    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(x + 8, y + 7 + i * 6); ctx.lineTo(x + 37, y + 7 + i * 6); ctx.stroke(); }
+  for (const sector of visibleSectors(camera)) {
+    const { x, y, variant, ventX, ventY, column, row } = sector;
+    ctx.strokeStyle = '#55826f25'; ctx.lineWidth = 1;
+    ctx.strokeRect(x + 16, y + 16, SECTOR_SIZE - 32, SECTOR_SIZE - 32);
+    ctx.strokeStyle = '#a1f5ca35'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + 65, y + 16); ctx.lineTo(x + 16, y + 16); ctx.lineTo(x + 16, y + 65); ctx.stroke();
+    if (variant === 0) {
+      circle(x + 320, y + 320, 130, null, '#6ab39d18');
+      ctx.setLineDash([6, 16]); circle(x + 320, y + 320, 158, null, '#6ab39d12'); ctx.setLineDash([]);
+    } else if (variant === 1) {
+      ctx.strokeStyle = '#6ab39d12'; ctx.strokeRect(x + 245, y + 245, 150, 150);
+      ctx.beginPath(); ctx.moveTo(x + 245, y + 245); ctx.lineTo(x + 395, y + 395); ctx.moveTo(x + 395, y + 245); ctx.lineTo(x + 245, y + 395); ctx.stroke();
+    } else {
+      ctx.strokeStyle = '#6ab39d12'; ctx.beginPath();
+      for (let i = 0; i < 6; i++) { ctx.moveTo(x + 260, y + 260 + i * 24); ctx.lineTo(x + 380, y + 260 + i * 24); }
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#aacabd25'; ctx.font = '10px monospace';
+    ctx.fillText(`SECTOR ${column} : ${row} / CONTAINMENT ZONE`, x + 35, y + SECTOR_SIZE - 35);
+    const vx = x + ventX, vy = y + ventY;
+    ctx.fillStyle = '#0b141b'; ctx.fillRect(vx, vy, 45, 40); ctx.strokeStyle = '#2d4149'; ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(vx + 8, vy + 7 + i * 6); ctx.lineTo(vx + 37, vy + 7 + i * 6); ctx.stroke(); }
+    const moteY = y + ((t * 8 + 170 + variant * 71) % SECTOR_SIZE);
+    circle(x + 160 + variant * 100, moteY, 1.2, '#a1f5ca22');
   }
-  for (let i = 0; i < 18; i++) circle((i * 173 + 97) % WIDTH, (i * 91 + t * (3 + i % 4)) % HEIGHT, 1.2, '#a1f5ca22');
 }
 function drawEnemy(e, t) {
   ctx.save(); ctx.translate(e.x, e.y);
@@ -225,23 +235,29 @@ function drawPlayer(t) {
   }
 }
 function render(t) {
+  const camera = cameraFor(game.player);
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
-  drawBackground(t);
+  ctx.save(); ctx.translate(-camera.x, -camera.y);
+  drawBackground(t, camera);
   if (game.state === 'ready') {
-    for (let i = 0; i < 6; i++) drawEnemy({ x: [180, 1050, 1100, 230, 900, 370][i], y: [170, 140, 500, 570, 600, 90][i], radius: 20, color: '#f27899', type: 'crawler', phase: i, hp: 45, maxHp: 45 }, t);
+    for (let i = 0; i < 6; i++) drawEnemy({ x: [180, 1050, 1100, 230, 900, 370][i] + camera.x, y: [170, 140, 500, 570, 600, 90][i] + camera.y, radius: 20, color: '#f27899', type: 'crawler', phase: i, hp: 45, maxHp: 45 }, t);
   }
   for (const bullet of game.bullets) {
+    if (!inView(bullet, camera, 30)) continue;
     ctx.strokeStyle = '#a1f5ca70'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(bullet.x - bullet.vx * .018, bullet.y - bullet.vy * .018); ctx.lineTo(bullet.x, bullet.y); ctx.stroke();
     circle(bullet.x, bullet.y, 3, '#e0ffd0');
   }
-  for (const enemy of game.enemies) drawEnemy(enemy, t);
+  for (const enemy of game.enemies) if (inView(enemy, camera, 70)) drawEnemy(enemy, t);
   drawPlayer(t);
   for (const particle of game.particles) {
+    if (!inView(particle, camera, 10)) continue;
     ctx.globalAlpha = Math.min(1, particle.life / particle.maxLife);
     circle(particle.x, particle.y, particle.size, particle.color);
   }
   ctx.globalAlpha = 1;
+  ctx.restore();
+  if (game.state === 'playing') drawEnemyIndicators(camera);
   if (!touch.enabled && game.state === 'playing') {
     ctx.strokeStyle = '#a1f5ca88'; ctx.lineWidth = 1;
     circle(pointer.x, pointer.y, 9, null, '#a1f5ca88');
@@ -253,10 +269,22 @@ function render(t) {
   }
   canvas.style.cursor = game.state === 'playing' ? 'none' : 'default';
 }
+function drawEnemyIndicators(camera) {
+  for (const enemy of game.enemies) {
+    if (inView(enemy, camera, 30)) continue;
+    const dx = enemy.x - game.player.x, dy = enemy.y - game.player.y;
+    const scale = Math.min((WIDTH / 2 - 27) / Math.max(1, Math.abs(dx)), (HEIGHT / 2 - 27) / Math.max(1, Math.abs(dy)));
+    ctx.save(); ctx.translate(WIDTH / 2 + dx * scale, HEIGHT / 2 + dy * scale); ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = enemy.color; ctx.globalAlpha = .75;
+    ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-5, -5); ctx.lineTo(-5, 5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
 function frame(timestamp) {
   const dt = Math.min(.05, lastTime ? (timestamp - lastTime) / 1000 : 0);
   lastTime = timestamp;
-  let aimX = pointer.x, aimY = pointer.y;
+  const aim = screenToWorld(pointer, cameraFor(game.player));
+  let aimX = aim.x, aimY = aim.y;
   if (touch.enabled && game.enemies.length) {
     const nearest = game.enemies.reduce((best, e) => Math.hypot(e.x - game.player.x, e.y - game.player.y) < Math.hypot(best.x - game.player.x, best.y - game.player.y) ? e : best);
     aimX = nearest.x; aimY = nearest.y;
