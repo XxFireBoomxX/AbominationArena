@@ -2,6 +2,8 @@
 
 2D browser survival game with progressively harder monster waves, upgrades, keyboard/mouse and touch controls. Built with Canvas and plain JavaScript; no runtime dependencies or external assets.
 
+For the complete project description, visual direction, gameplay balance and guidance for continuing development, read the [Bulgarian project guide](docs/PROJECT_GUIDE.bg.md).
+
 ## Run
 
 Requires Node.js 20 or newer.
