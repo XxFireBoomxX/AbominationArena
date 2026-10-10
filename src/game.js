@@ -1,5 +1,6 @@
 import { Arena, WIDTH, HEIGHT } from './engine.js';
 import { cameraFor, screenToWorld, inView, visibleSectors, SECTOR_SIZE } from './world.js';
+import { WEAPONS, WEAPON_IDS } from './weapons.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game');
@@ -9,11 +10,51 @@ const keys = new Set();
 const pointer = { x: WIDTH * .7, y: HEIGHT * .5, down: false };
 const touch = { x: 0, y: 0, active: false, enabled: matchMedia('(pointer:coarse)').matches };
 let dash = false, lastTime = 0, previousState = '', toastTimer, audio, sound = false;
+let weaponHUDKey = '';
 let best = 0;
 try { best = Number(localStorage.getItem('abomination-record')) || 0; } catch { /* Storage may be unavailable in private mode. */ }
 const padded = n => String(n).padStart(6, '0');
 const timeLabel = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 $('record').textContent = padded(best);
+
+const weaponShapes = {
+  rifle: 'M3 8h9l3-3h10v3h12M12 8v6h6l3-6M26 5v6M3 8v5h6',
+  smg: 'M5 8h9l3-3h11v4h7M14 8v7h6V8M6 8v5h5M25 5v6',
+  shotgun: 'M2 12l9-5h14v3H12l-4 6H3zM25 7h13M25 10h13'
+};
+for (const id of WEAPON_IDS) {
+  const weapon = WEAPONS[id], button = document.createElement('button');
+  button.type = 'button'; button.className = 'weapon-button'; button.dataset.weapon = id;
+  button.style.setProperty('--weapon-color', weapon.color);
+  button.setAttribute('aria-label', `${weapon.name}, клавиш ${weapon.key}. ${weapon.description}`);
+  button.innerHTML = `<kbd>${weapon.key}</kbd><svg viewBox="0 0 40 20" aria-hidden="true"><path d="${weaponShapes[id]}"/></svg><span>${weapon.name}</span>`;
+  // Multi-touch browsers may suppress click while another finger holds the joystick.
+  button.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'touch') { event.preventDefault(); equipWeapon(id); }
+  });
+  button.addEventListener('click', () => equipWeapon(id));
+  $('weapons').append(button);
+}
+function equipWeapon(id) {
+  if (game.selectWeapon(id)) {
+    canvas.focus({ preventScroll: true });
+    updateWeaponHUD();
+  }
+}
+function updateWeaponHUD() {
+  const key = `${game.weaponId}:${game.state}:${game.powerLevel}:${game.speedLevel}`;
+  if (key === weaponHUDKey) return;
+  weaponHUDKey = key;
+  document.querySelectorAll('[data-weapon]').forEach(button => {
+    const selected = button.dataset.weapon === game.weaponId;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.disabled = game.state !== 'playing';
+  });
+  const damage = Number(game.damage.toFixed(1));
+  $('weapon-description').textContent = game.weapon.description;
+  $('weapon-stats').textContent = `${game.weapon.pellets > 1 ? game.weapon.pellets + ' × ' : ''}${damage} щети · ${(1 / game.fireInterval).toFixed(1)} / сек`;
+}
 
 function tone(frequency, duration, type = 'sine', volume = .035) {
   if (!sound || !audio) return;
@@ -66,6 +107,7 @@ window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && event.target.tagName !== 'BUTTON') event.preventDefault();
   if (['p', 'escape'].includes(key) && !event.repeat) pause();
+  if (['1', '2', '3'].includes(key) && !event.repeat) equipWeapon(WEAPON_IDS[Number(key) - 1]);
   if (key === ' ' && !event.repeat && event.target.tagName !== 'BUTTON') dash = true;
   keys.add(key);
 });
@@ -108,6 +150,7 @@ function syncOverlay() {
   $('pause').disabled = !['playing', 'paused'].includes(game.state);
   $('pause').innerHTML = game.state === 'paused' ? '▷ <span>Продължи</span>' : 'Ⅱ <span>Пауза</span>';
   $('status').textContent = { ready: 'В ГОТОВНОСТ', playing: 'БИТКАТА Е В ХОД', paused: 'ПАУЗА', upgrade: 'ВЪЛНАТА Е ПРЕМИНАТА', gameover: 'СИГНАЛЪТ Е ЗАГУБЕН' }[game.state];
+  updateWeaponHUD();
   if (game.state === 'playing') canvas.focus({ preventScroll: true });
   if (game.state === 'ready') {
     content.innerHTML = '<div class="overlay-badge">SURVIVAL PROTOCOL / 01</div><h2>ABOMINATION<br><span>ARENA</span></h2><p>Влез в арената. Надживей чудовищата.<br>Стани по-силен с всяка премината вълна.</p><button class="primary-button" id="start">ВЛЕЗ В АРЕНАТА <span>↗</span></button><div class="overlay-note">' + (touch.enabled ? 'ПЛЪЗНИ ЗА ДВИЖЕНИЕ · АВТОМАТИЧНА СТРЕЛБА' : 'WASD ЗА ДВИЖЕНИЕ · ЗАДРЪЖ ЛЯВ БУТОН ЗА СТРЕЛБА') + '</div>';
@@ -116,7 +159,7 @@ function syncOverlay() {
     content.innerHTML = '<div class="overlay-badge">ПРОТОКОЛЪТ Е ЗАДЪРЖАН</div><h2>Поеми <span>въздух.</span></h2><p>Арената ще те изчака.</p><button class="primary-button" id="resume">ПРОДЪЛЖИ <span>→</span></button>';
     $('resume').addEventListener('click', pause);
   } else if (game.state === 'upgrade') {
-    content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Избери подобрение. Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+10 щети<br>за всеки изстрел</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
+    content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Избери подобрение. Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+40% от базовите щети<br>за всички оръжия</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
     content.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => { game.upgrade(button.dataset.upgrade); clearInput(); syncOverlay(); toast('ВЪЛНА ' + String(game.wave).padStart(2, '0')); }));
   } else if (game.state === 'gameover') {
     const newRecord = game.score > best;
@@ -132,6 +175,7 @@ function syncOverlay() {
 }
 
 function updateHUD() {
+  updateWeaponHUD();
   const p = game.player;
   $('wave').textContent = String(game.wave).padStart(2, '0');
   $('threat').textContent = game.wave < 3 ? 'НИСЪК' : game.wave < 6 ? 'ВИСОК' : 'КРИТИЧЕН';
@@ -227,11 +271,20 @@ function drawPlayer(t) {
   circle(-2, 0, 13, '#7fb79c');
   ctx.fillStyle = '#142a2b'; ctx.fillRect(0, -9, 9, 18);
   ctx.fillStyle = '#c6ffe0'; ctx.fillRect(3, -7, 4, 14);
-  ctx.fillStyle = '#111e27'; ctx.fillRect(7, 7, 25, 9);
-  ctx.fillStyle = '#a1f5ca'; ctx.fillRect(28, 7, 5, 9);
+  const weapon = game.weapon;
+  ctx.fillStyle = '#111e27'; ctx.fillRect(7, -5, weapon.barrel, weapon.id === 'smg' ? 12 : 10);
+  ctx.fillStyle = weapon.color; ctx.fillRect(weapon.barrel + 3, -5, 4, 10);
+  if (weapon.id === 'shotgun') {
+    ctx.strokeStyle = '#63836e'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(weapon.barrel + 3, 0); ctx.stroke();
+    ctx.fillStyle = '#73875a'; ctx.fillRect(17, -6, 9, 12);
+  } else if (weapon.id === 'smg') {
+    ctx.fillStyle = '#456970'; ctx.fillRect(12, 7, 8, 8);
+  }
   ctx.restore();
-  if (game.shotTimer > game.fireInterval - .05 && game.state === 'playing') {
-    circle(p.x + Math.cos(p.angle) * 33, p.y + Math.sin(p.angle) * 33, 7, '#eaffbf88');
+  if (game.muzzleTime > 0 && game.state === 'playing') {
+    const muzzle = weapon.barrel + 7;
+    circle(p.x + Math.cos(p.angle) * muzzle, p.y + Math.sin(p.angle) * muzzle, weapon.pellets > 1 ? 11 : 6, weapon.color + '88');
   }
 }
 function render(t) {
@@ -244,9 +297,9 @@ function render(t) {
   }
   for (const bullet of game.bullets) {
     if (!inView(bullet, camera, 30)) continue;
-    ctx.strokeStyle = '#a1f5ca70'; ctx.lineWidth = 3;
+    ctx.strokeStyle = bullet.color + '70'; ctx.lineWidth = bullet.radius;
     ctx.beginPath(); ctx.moveTo(bullet.x - bullet.vx * .018, bullet.y - bullet.vy * .018); ctx.lineTo(bullet.x, bullet.y); ctx.stroke();
-    circle(bullet.x, bullet.y, 3, '#e0ffd0');
+    circle(bullet.x, bullet.y, bullet.radius * .75, bullet.color);
   }
   for (const enemy of game.enemies) if (inView(enemy, camera, 70)) drawEnemy(enemy, t);
   drawPlayer(t);
@@ -296,7 +349,11 @@ function frame(timestamp) {
   });
   dash = false;
   for (const event of game.events.splice(0)) {
-    if (event.type === 'shot') tone(220, .045, 'triangle', .02);
+    if (event.type === 'shot') {
+      const s = WEAPONS[event.weaponId].sound;
+      tone(s.frequency, s.duration, s.type, s.volume);
+    }
+    if (event.type === 'equip') tone(550, .06, 'sine', .02);
     if (event.type === 'kill') tone(90, .09, 'sawtooth', .018);
     if (event.type === 'hurt') tone(80, .2, 'sawtooth', .045);
     if (event.type === 'dash') tone(450, .15, 'sine', .025);

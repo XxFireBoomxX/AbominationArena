@@ -26,6 +26,11 @@
           <div id="wave-toast" class="wave-toast" aria-live="polite"></div>
           <div class="touch-controls"><div id="joystick" aria-label="Плъзни за движение"><span></span></div><button id="touch-dash" aria-label="Рязък скок">↯</button></div>
         </div>
+        <div class="weapon-panel">
+          <div class="weapon-heading"><span class="eyebrow">СНАРЯЖЕНИЕ</span><span class="weapon-hint">КЛАВИШИ 1–3 / ДОКОСНИ ЗА СМЯНА</span></div>
+          <div class="weapon-options" id="weapons" role="group" aria-label="Избор на оръжие"></div>
+          <div class="weapon-detail"><span id="weapon-description">Точна стрелба · далечна дистанция</span><span id="weapon-stats">25 щети</span></div>
+        </div>
         <div class="arena-footer"><span><span class="mint">●</span> <span id="footer-status">Системата е готова</span></span><span>БЕЗ ПОЩАДА. БЕЗ КРАЙ.</span></div>
       </section>
       <aside class="sidebar">
@@ -36,7 +41,7 @@
         <section class="tip-card"><span>✦</span><p>Не спирай да се движиш.<br><span>След всяка вълна избери подобрение.</span></p></section>
       </aside>
     </div>
-    <footer class="controls"><span class="eyebrow">КАК СЕ ИГРАЕ</span><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Движение</span></div><div><span class="mouse-icon">↖</span><span>Прицелване и стрелба</span></div><div><kbd>SPACE</kbd><span>Рязък скок</span></div><div><kbd>P</kbd><span>Пауза</span></div></footer>
+    <footer class="controls"><span class="eyebrow">КАК СЕ ИГРАЕ</span><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Движение</span></div><div><span class="mouse-icon">↖</span><span>Прицелване и стрелба</span></div><div><kbd>SPACE</kbd><span>Рязък скок</span></div><div><kbd>1–3</kbd><span>Оръжие</span></div><div><kbd>P</kbd><span>Пауза</span></div></footer>
     <p class="bottom-note">Безкрайна арена. Безкрайни вълни. Колко ще издържиш?</p>
   </main>
   <script type="module" src="/src/game.js"></script>

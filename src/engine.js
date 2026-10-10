@@ -1,4 +1,5 @@
 import { WIDTH, spawnPosition } from './world.js';
+import { WEAPONS } from './weapons.js';
 export { WIDTH, HEIGHT } from './world.js';
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -18,19 +19,33 @@ export class Arena {
     this.score = 0;
     this.kills = 0;
     this.time = 0;
-    this.damage = 25;
-    this.fireInterval = .17;
+    this.weaponId = 'rifle';
+    this.powerLevel = 0;
+    this.speedLevel = 0;
     this.shotTimer = 0;
+    this.muzzleTime = 0;
     this.spawnTimer = .7;
     this.spawned = 0;
     this.waveKills = 0;
     this.target = 8;
     this.state = 'playing';
   }
+  get weapon() { return WEAPONS[this.weaponId]; }
+  get damage() { return this.weapon.damage * (1 + this.powerLevel * .4); }
+  get fireInterval() { return Math.max(this.weapon.minInterval, this.weapon.interval * .82 ** this.speedLevel); }
+  selectWeapon(id) {
+    if (this.state !== 'playing' || !Object.hasOwn(WEAPONS, id) || id === this.weaponId) return false;
+    this.weaponId = id;
+    // Switching preserves recovery from the last shot; it cannot bypass fire rate.
+    this.shotTimer = Math.max(this.shotTimer, .12);
+    this.muzzleTime = 0;
+    this.events.push({ type: 'equip', weaponId: id });
+    return true;
+  }
   upgrade(type) {
     if (this.state !== 'upgrade' || !['power', 'speed', 'health'].includes(type)) return;
-    if (type === 'power') this.damage += 10;
-    if (type === 'speed') this.fireInterval = Math.max(.065, this.fireInterval * .82);
+    if (type === 'power') this.powerLevel++;
+    if (type === 'speed') this.speedLevel++;
     if (type === 'health') this.player.maxHp += 20;
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + 35);
     this.wave++;
@@ -85,11 +100,17 @@ export class Arena {
       this.burst(p.x, p.y, '#a1f5ca', 2);
     } else { p.x += mx * 250 * dt; p.y += my * 250 * dt; }
     this.shotTimer = Math.max(0, this.shotTimer - dt);
+    this.muzzleTime = Math.max(0, this.muzzleTime - dt);
     if (input.fire && this.shotTimer === 0) {
-      const dx = Math.cos(p.angle), dy = Math.sin(p.angle);
-      this.bullets.push({ x: p.x + dx * 25, y: p.y + dy * 25, vx: dx * 740, vy: dy * 740, life: 1.7, damage: this.damage });
+      const weapon = this.weapon;
+      for (let i = 0; i < weapon.pellets; i++) {
+        const offset = weapon.pellets > 1 ? (i / (weapon.pellets - 1) - .5) * weapon.spread : weapon.spread ? (this.random() - .5) * weapon.spread : 0;
+        const angle = p.angle + offset, dx = Math.cos(angle), dy = Math.sin(angle);
+        this.bullets.push({ x: p.x + dx * 25, y: p.y + dy * 25, vx: dx * weapon.speed, vy: dy * weapon.speed, life: weapon.life, damage: this.damage, radius: weapon.radius, color: weapon.color, weaponId: weapon.id });
+      }
       this.shotTimer = this.fireInterval;
-      this.events.push({ type: 'shot' });
+      this.muzzleTime = .06;
+      this.events.push({ type: 'shot', weaponId: weapon.id });
     }
     this.spawnTimer -= dt;
     if (this.spawned < this.target && this.spawnTimer <= 0) {
@@ -117,18 +138,19 @@ export class Arena {
       }
     }
     for (const bullet of this.bullets) {
-      bullet.x += bullet.vx * dt;
-      bullet.y += bullet.vy * dt;
+      const travelTime = Math.min(dt, bullet.life);
+      const prevX = bullet.x, prevY = bullet.y;
+      bullet.x += bullet.vx * travelTime;
+      bullet.y += bullet.vy * travelTime;
       bullet.life -= dt;
       for (const enemy of this.enemies) {
-        if (enemy.hp <= 0 || bullet.life <= 0) continue;
+        if (enemy.hp <= 0) continue;
         // Segment collision prevents fast bullets passing through small enemies.
-        const prevX = bullet.x - bullet.vx * dt, prevY = bullet.y - bullet.vy * dt;
         const segX = bullet.x - prevX, segY = bullet.y - prevY;
         const denom = segX * segX + segY * segY;
         const t = denom ? clamp(((enemy.x - prevX) * segX + (enemy.y - prevY) * segY) / denom, 0, 1) : 0;
         const hitDistance = Math.hypot(enemy.x - (prevX + t * segX), enemy.y - (prevY + t * segY));
-        if (hitDistance < enemy.radius + 4) {
+        if (hitDistance < enemy.radius + bullet.radius) {
           enemy.hp -= bullet.damage;
           enemy.hit = .1;
           bullet.life = 0;
@@ -140,6 +162,7 @@ export class Arena {
             this.burst(enemy.x, enemy.y, enemy.color, 16);
             this.events.push({ type: 'kill' });
           }
+          break;
         }
       }
     }
