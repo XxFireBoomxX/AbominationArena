@@ -1,8 +1,14 @@
 import { WIDTH, spawnPosition } from './world.js';
 import { WEAPONS } from './weapons.js';
+import { createEnemy, enemyTypeFor, ENEMIES } from './enemies.js';
 export { WIDTH, HEIGHT } from './world.js';
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const segmentDistance = (point, x, y, endX, endY) => {
+  const dx = endX - x, dy = endY - y, lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared ? clamp(((point.x - x) * dx + (point.y - y) * dy) / lengthSquared, 0, 1) : 0;
+  return Math.hypot(point.x - x - t * dx, point.y - y - t * dy);
+};
 export class Arena {
   constructor(random = Math.random) {
     this.random = random;
@@ -10,9 +16,11 @@ export class Arena {
     this.state = 'ready';
   }
   reset() {
-    this.player = { x: 0, y: 0, radius: 17, hp: 100, maxHp: 100, angle: 0, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0 };
+    this.player = { x: 0, y: 0, radius: 17, hp: 100, maxHp: 100, angle: 0, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashX: 1, dashY: 0, slowed: false };
     this.enemies = [];
     this.bullets = [];
+    this.hostileBullets = [];
+    this.zones = [];
     this.particles = [];
     this.events = [];
     this.wave = 1;
@@ -54,6 +62,8 @@ export class Arena {
     this.spawned = 0;
     this.spawnTimer = 1;
     this.bullets = [];
+    this.hostileBullets = [];
+    this.zones = [];
     this.state = 'playing';
     this.events.push({ type: 'wave' });
   }
@@ -66,13 +76,80 @@ export class Arena {
   }
   spawnEnemy() {
     const { x, y } = spawnPosition(this.player, this.random);
-    const roll = this.random();
-    const type = this.wave >= 3 && roll < .25 ? 'tank' : this.wave >= 2 && roll < .55 ? 'runner' : 'crawler';
-    const stats = { crawler: { hp: 45, speed: 80, radius: 19, color: '#f27899', points: 100 }, runner: { hp: 30, speed: 145, radius: 14, color: '#b294f9', points: 150 }, tank: { hp: 120, speed: 55, radius: 29, color: '#f1ba77', points: 250 } }[type];
-    const hp = stats.hp + (this.wave - 1) * 7;
-    this.enemies.push({ ...stats, hp, maxHp: hp, type, x, y, phase: this.random() * Math.PI * 2, hit: 0, speed: stats.speed + Math.min(80, (this.wave - 1) * 5) });
-    this.burst(x, y, stats.color, 9);
+    const type = enemyTypeFor(this.wave, this.random());
+    const enemy = createEnemy(type, this.wave, x, y, this.random() * Math.PI * 2);
+    this.enemies.push(enemy);
+    this.burst(x, y, enemy.color, 9);
     this.spawned++;
+  }
+  hurtPlayer(damage) {
+    const p = this.player;
+    if (p.invulnerable > 0 || p.hp <= 0) return false;
+    p.hp = Math.max(0, p.hp - damage);
+    p.invulnerable = .8;
+    this.burst(p.x, p.y, '#ff6788', 18);
+    this.events.push({ type: 'hurt' });
+    return true;
+  }
+  stepEnemy(enemy, dt) {
+    const p = this.player;
+    if (enemy.hp <= 0) return;
+    // Relocation cancels a prepared attack; its old aim belongs to another sector.
+    if (distance(p, enemy) > WIDTH * 2) {
+      Object.assign(enemy, spawnPosition(p, this.random));
+      enemy.attack = null; enemy.cooldown = 1;
+      this.burst(enemy.x, enemy.y, enemy.color, 9);
+    }
+    const dx = p.x - enemy.x, dy = p.y - enemy.y, d = Math.hypot(dx, dy) || 1;
+    const prevX = enemy.x, prevY = enemy.y;
+    const ability = ENEMIES[enemy.type]?.ability;
+    let charging = false;
+    enemy.hit = Math.max(0, enemy.hit - dt);
+    enemy.cooldown = Math.max(0, (enemy.cooldown ?? 1) - dt);
+    if (enemy.attack) {
+      const attack = enemy.attack;
+      if (attack.stage === 'active') {
+        const travel = Math.min(dt, attack.remaining);
+        enemy.x += attack.dx * ability.speed * travel;
+        enemy.y += attack.dy * ability.speed * travel;
+        charging = true;
+      }
+      attack.remaining -= dt;
+      if (attack.remaining <= 0) {
+        if (attack.stage === 'windup') {
+          if (enemy.type === 'hexer') {
+            this.hostileBullets.push({ x: enemy.x + attack.dx * 28, y: enemy.y + attack.dy * 28,
+              vx: attack.dx * ability.speed, vy: attack.dy * ability.speed,
+              radius: ability.radius, life: ability.life, damage: ability.damage, color: enemy.color });
+            enemy.attack = null;
+          } else if (enemy.type === 'shaman') {
+            this.zones.push({ x: attack.targetX, y: attack.targetY, radius: ability.radius,
+              warning: ability.warning, life: ability.duration, damage: ability.damage, slow: ability.slow, color: enemy.color });
+            enemy.attack = null;
+          } else {
+            attack.stage = 'active'; attack.remaining = ability.duration;
+          }
+          enemy.cooldown = ability.cooldown;
+          this.events.push({ type: 'enemy-attack', enemyType: enemy.type });
+        } else if (attack.stage === 'active') {
+          attack.stage = 'recovery'; attack.remaining = ability.recovery;
+        } else enemy.attack = null;
+      }
+    } else {
+      // Casters hold a firing distance; close-range enemies keep chasing.
+      const caster = enemy.type === 'hexer' || enemy.type === 'shaman';
+      const direction = caster ? (d > 350 ? 1 : d < 220 ? -1 : 0) : 1;
+      enemy.x += dx / d * enemy.speed * direction * dt;
+      enemy.y += dy / d * enemy.speed * direction * dt;
+      if (ability && enemy.cooldown === 0 && d <= ability.range && (enemy.type !== 'charger' || d >= 90)) {
+        enemy.attack = { stage: 'windup', remaining: ability.windup, total: ability.windup,
+          dx: dx / d, dy: dy / d, targetX: p.x, targetY: p.y };
+      }
+    }
+    const touching = charging ? segmentDistance(p, prevX, prevY, enemy.x, enemy.y) < p.radius + enemy.radius : distance(p, enemy) < p.radius + enemy.radius;
+    if (touching && this.hurtPlayer(charging ? ability.damage : enemy.type === 'tank' ? 22 : 12) && !charging) {
+      enemy.x -= dx / d * 32; enemy.y -= dy / d * 32;
+    }
   }
   step(dt, input = {}) {
     if (this.state !== 'playing') return;
@@ -81,6 +158,17 @@ export class Arena {
     const p = this.player;
     p.invulnerable = Math.max(0, p.invulnerable - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    for (const zone of this.zones) {
+      const warningTime = Math.min(dt, zone.warning);
+      zone.warning = Math.max(0, zone.warning - dt);
+      zone.life -= dt - warningTime;
+    }
+    this.zones = this.zones.filter(zone => zone.life > 0 && distance(p, zone) <= WIDTH * 2);
+    let movementScale = 1;
+    for (const zone of this.zones) {
+      if (zone.warning === 0 && distance(p, zone) < p.radius + zone.radius) movementScale = Math.min(movementScale, zone.slow);
+    }
+    p.slowed = movementScale < 1;
     let mx = input.moveX || 0, my = input.moveY || 0;
     const length = Math.hypot(mx, my);
     if (length > 1) { mx /= length; my /= length; }
@@ -98,7 +186,10 @@ export class Arena {
       p.x += p.dashX * 850 * dt;
       p.y += p.dashY * 850 * dt;
       this.burst(p.x, p.y, '#a1f5ca', 2);
-    } else { p.x += mx * 250 * dt; p.y += my * 250 * dt; }
+    } else {
+      const speed = 250 * movementScale;
+      p.x += mx * speed * dt; p.y += my * speed * dt;
+    }
     this.shotTimer = Math.max(0, this.shotTimer - dt);
     this.muzzleTime = Math.max(0, this.muzzleTime - dt);
     if (input.fire && this.shotTimer === 0) {
@@ -117,26 +208,7 @@ export class Arena {
       this.spawnEnemy();
       this.spawnTimer = Math.max(.25, .95 - this.wave * .055);
     }
-    for (const enemy of this.enemies) {
-      // Reuse distant pursuers, preserving their health and wave membership.
-      // This keeps an unfinished wave reachable after a long journey.
-      if (distance(p, enemy) > WIDTH * 2) {
-        Object.assign(enemy, spawnPosition(p, this.random));
-        this.burst(enemy.x, enemy.y, enemy.color, 9);
-      }
-      const dx = p.x - enemy.x, dy = p.y - enemy.y, d = Math.hypot(dx, dy) || 1;
-      enemy.x += dx / d * enemy.speed * dt;
-      enemy.y += dy / d * enemy.speed * dt;
-      enemy.hit = Math.max(0, enemy.hit - dt);
-      if (distance(p, enemy) < p.radius + enemy.radius && p.invulnerable === 0) {
-        p.hp = Math.max(0, p.hp - (enemy.type === 'tank' ? 22 : 12));
-        p.invulnerable = .8;
-        this.burst(p.x, p.y, '#ff6788', 18);
-        this.events.push({ type: 'hurt' });
-        enemy.x -= dx / d * 32;
-        enemy.y -= dy / d * 32;
-      }
-    }
+    for (const enemy of this.enemies) this.stepEnemy(enemy, dt);
     for (const bullet of this.bullets) {
       const travelTime = Math.min(dt, bullet.life);
       const prevX = bullet.x, prevY = bullet.y;
@@ -146,10 +218,7 @@ export class Arena {
       for (const enemy of this.enemies) {
         if (enemy.hp <= 0) continue;
         // Segment collision prevents fast bullets passing through small enemies.
-        const segX = bullet.x - prevX, segY = bullet.y - prevY;
-        const denom = segX * segX + segY * segY;
-        const t = denom ? clamp(((enemy.x - prevX) * segX + (enemy.y - prevY) * segY) / denom, 0, 1) : 0;
-        const hitDistance = Math.hypot(enemy.x - (prevX + t * segX), enemy.y - (prevY + t * segY));
+        const hitDistance = segmentDistance(enemy, prevX, prevY, bullet.x, bullet.y);
         if (hitDistance < enemy.radius + bullet.radius) {
           enemy.hp -= bullet.damage;
           enemy.hit = .1;
@@ -168,6 +237,18 @@ export class Arena {
     }
     this.enemies = this.enemies.filter(e => e.hp > 0);
     this.bullets = this.bullets.filter(b => b.life > 0);
+    for (const bullet of this.hostileBullets) {
+      const travelTime = Math.min(dt, bullet.life), prevX = bullet.x, prevY = bullet.y;
+      bullet.x += bullet.vx * travelTime; bullet.y += bullet.vy * travelTime;
+      bullet.life -= dt;
+      if (segmentDistance(p, prevX, prevY, bullet.x, bullet.y) < p.radius + bullet.radius) {
+        this.hurtPlayer(bullet.damage); bullet.life = 0;
+      }
+    }
+    this.hostileBullets = this.hostileBullets.filter(b => b.life > 0 && distance(p, b) <= WIDTH * 2);
+    for (const zone of this.zones) {
+      if (zone.warning === 0 && distance(p, zone) < p.radius + zone.radius) this.hurtPlayer(zone.damage);
+    }
     for (const particle of this.particles) {
       particle.x += particle.vx * dt;
       particle.y += particle.vy * dt;
@@ -179,6 +260,7 @@ export class Arena {
     if (p.hp <= 0) { this.state = 'gameover'; this.events.push({ type: 'gameover' }); }
     else if (this.waveKills >= this.target && this.enemies.length === 0) {
       this.state = 'upgrade';
+      this.hostileBullets = []; this.zones = []; p.slowed = false;
       this.score += this.wave * 500;
       this.events.push({ type: 'upgrade' });
     }

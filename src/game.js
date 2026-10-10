@@ -1,6 +1,7 @@
 import { Arena, WIDTH, HEIGHT } from './engine.js';
 import { cameraFor, screenToWorld, inView, visibleSectors, SECTOR_SIZE } from './world.js';
 import { WEAPONS, WEAPON_IDS } from './weapons.js';
+import { ENEMIES, ENEMY_IDS } from './enemies.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game');
@@ -16,6 +17,16 @@ try { best = Number(localStorage.getItem('abomination-record')) || 0; } catch { 
 const padded = n => String(n).padStart(6, '0');
 const timeLabel = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 $('record').textContent = padded(best);
+for (const id of ENEMY_IDS) {
+  const enemy = ENEMIES[id], entry = document.createElement('article');
+  entry.className = 'enemy-entry'; entry.style.setProperty('--enemy-color', enemy.color);
+  entry.innerHTML = `<span class="enemy-symbol" aria-hidden="true">${{ crawler: '✦', runner: '»', tank: '⬡', hexer: '◇', charger: '↠', shaman: '◎' }[id]}</span><div><strong>${enemy.name}<small>ВЪЛНА ${enemy.wave}+</small></strong><p>${enemy.description}</p></div>`;
+  $('bestiary').append(entry);
+}
+function waveToast() {
+  const newcomer = ENEMY_IDS.find(id => ENEMIES[id].wave === game.wave);
+  toast('ВЪЛНА ' + String(game.wave).padStart(2, '0') + (game.wave > 1 && newcomer ? ' · ' + ENEMIES[newcomer].name.toUpperCase() : ''));
+}
 
 const weaponShapes = {
   rifle: 'M3 8h9l3-3h10v3h12M12 8v6h6l3-6M26 5v6M3 8v5h6',
@@ -94,7 +105,7 @@ function start() {
   game.reset();
   previousState = '';
   syncOverlay();
-  toast('ВЪЛНА 01');
+  waveToast();
 }
 function pause() {
   if (!['playing', 'paused'].includes(game.state)) return;
@@ -105,10 +116,11 @@ function pause() {
 $('pause').addEventListener('click', pause);
 window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
-  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && event.target.tagName !== 'BUTTON') event.preventDefault();
+  const nativeControl = event.target.closest('button, summary, a');
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && !nativeControl) event.preventDefault();
   if (['p', 'escape'].includes(key) && !event.repeat) pause();
   if (['1', '2', '3'].includes(key) && !event.repeat) equipWeapon(WEAPON_IDS[Number(key) - 1]);
-  if (key === ' ' && !event.repeat && event.target.tagName !== 'BUTTON') dash = true;
+  if (key === ' ' && !event.repeat && !nativeControl) dash = true;
   keys.add(key);
 });
 window.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
@@ -160,7 +172,7 @@ function syncOverlay() {
     $('resume').addEventListener('click', pause);
   } else if (game.state === 'upgrade') {
     content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Избери подобрение. Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+40% от базовите щети<br>за всички оръжия</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
-    content.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => { game.upgrade(button.dataset.upgrade); clearInput(); syncOverlay(); toast('ВЪЛНА ' + String(game.wave).padStart(2, '0')); }));
+    content.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => { game.upgrade(button.dataset.upgrade); clearInput(); syncOverlay(); waveToast(); }));
   } else if (game.state === 'gameover') {
     const newRecord = game.score > best;
     if (newRecord) {
@@ -235,23 +247,40 @@ function drawBackground(t, camera) {
 }
 function drawEnemy(e, t) {
   ctx.save(); ctx.translate(e.x, e.y);
-  const angle = Math.atan2(game.player.y - e.y, game.player.x - e.x);
+  const angle = e.attack && e.attack.stage !== 'recovery' ? Math.atan2(e.attack.dy, e.attack.dx) : Math.atan2(game.player.y - e.y, game.player.x - e.x);
   const r = e.radius, wobble = Math.sin(t * 8 + e.phase) * 1.5;
   circle(0, 5, r * 1.1, '#03091266');
   ctx.rotate(angle);
   ctx.shadowColor = e.color; ctx.shadowBlur = e.hit > 0 ? 25 : 8;
   ctx.fillStyle = e.hit > 0 ? '#fff' : e.color;
   ctx.beginPath();
-  for (let i = 0; i < 12; i++) {
-    const a = i / 12 * Math.PI * 2, radius = r + (i % 2 === 0 ? 4 : -1) + wobble;
+  const vertices = e.type === 'hexer' ? 8 : e.type === 'shaman' ? 16 : e.type === 'charger' ? 6 : 12;
+  for (let i = 0; i < vertices; i++) {
+    const a = i / vertices * Math.PI * 2, radius = r + (i % 2 === 0 ? (e.type === 'hexer' ? 10 : 4) : -1) + wobble;
     const x = Math.cos(a) * radius, y = Math.sin(a) * radius;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
-  circle(-2, 0, r * .75, e.type === 'tank' ? '#7d4e39' : e.type === 'runner' ? '#51437e' : '#793950');
+  circle(-2, 0, r * .75, { tank: '#7d4e39', runner: '#51437e', hexer: '#244d65', charger: '#70392b', shaman: '#5b6331' }[e.type] || '#793950');
   ctx.fillStyle = '#19222b'; ctx.beginPath(); ctx.moveTo(5, -r * .8); ctx.lineTo(18, -r * 1.1); ctx.lineTo(11, -5); ctx.fill();
   ctx.beginPath(); ctx.moveTo(5, r * .8); ctx.lineTo(18, r * 1.1); ctx.lineTo(11, 5); ctx.fill();
   circle(7, -5, 3, '#fff7d4'); circle(7, 5, 3, '#fff7d4');
+  if (e.type === 'hexer') {
+    circle(-7, 0, 4, '#e3fcff', e.color);
+    ctx.strokeStyle = e.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, -r - 5); ctx.lineTo(-8, r + 5); ctx.stroke();
+    circle(-8, -r - 5, 4, e.color);
+  } else if (e.type === 'charger') {
+    ctx.fillStyle = '#fff1d4';
+    for (const side of [-1, 1]) { ctx.beginPath(); ctx.moveTo(8, side * 13); ctx.lineTo(r + 15, side * 17); ctx.lineTo(16, side * 5); ctx.fill(); }
+  } else if (e.type === 'shaman') {
+    ctx.lineWidth = 2; circle(0, 0, r + 8, null, e.color);
+    ctx.strokeStyle = '#f4ffc0'; ctx.strokeRect(-8, -6, 10, 12);
+  }
+  if (e.attack?.stage === 'windup') {
+    const progress = 1 - e.attack.remaining / e.attack.total;
+    ctx.strokeStyle = '#fff1d4'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, r + 13, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress); ctx.stroke();
+  }
   ctx.restore();
   if (e.hp < e.maxHp) {
     ctx.fillStyle = '#071019'; ctx.fillRect(e.x - r, e.y - r - 12, r * 2, 3);
@@ -263,6 +292,7 @@ function drawPlayer(t) {
   ctx.save(); ctx.translate(p.x, p.y);
   circle(0, 8, 22, '#03091280');
   if (p.invulnerable > 0) circle(0, 0, 26, '#a1f5ca12', '#a1f5ca80');
+  if (p.slowed) { ctx.setLineDash([4, 5]); circle(0, 0, 31, null, ENEMIES.shaman.color); ctx.setLineDash([]); }
   if (p.invulnerable > 0 && Math.floor(t * 20) % 2 === 0) ctx.globalAlpha = .55;
   ctx.rotate(p.angle);
   ctx.shadowColor = '#a1f5ca'; ctx.shadowBlur = 16;
@@ -287,11 +317,48 @@ function drawPlayer(t) {
     circle(p.x + Math.cos(p.angle) * muzzle, p.y + Math.sin(p.angle) * muzzle, weapon.pellets > 1 ? 11 : 6, weapon.color + '88');
   }
 }
+function drawZone(zone, t) {
+  const warning = zone.warning > 0;
+  ctx.save(); ctx.translate(zone.x, zone.y); ctx.lineWidth = 2;
+  circle(0, 0, zone.radius, zone.color + (warning ? '10' : '26'), zone.color);
+  if (warning) {
+    ctx.setLineDash([8, 7]); circle(0, 0, zone.radius + 5, null, zone.color); ctx.setLineDash([]);
+    const progress = 1 - zone.warning / ENEMIES.shaman.ability.warning;
+    circle(0, 0, zone.radius * Math.max(.05, progress), null, zone.color + '80');
+  } else {
+    circle(0, 0, zone.radius * (.8 + Math.sin(t * 5) * .04), null, zone.color + '70');
+    ctx.strokeStyle = zone.color + '70';
+    for (let i = -2; i <= 2; i++) { const y = i * 22, span = Math.sqrt(zone.radius ** 2 - y ** 2); ctx.beginPath(); ctx.moveTo(-span, y); ctx.lineTo(span, y); ctx.stroke(); }
+  }
+  ctx.fillStyle = zone.color; ctx.font = 'bold 17px monospace'; ctx.textAlign = 'center'; ctx.fillText(warning ? '!' : '×', 0, 6);
+  ctx.restore();
+}
+function drawAttackWarnings(camera, t) {
+  for (const zone of game.zones) if (inView(zone, camera, zone.radius + 10)) drawZone(zone, t);
+  for (const e of game.enemies) {
+    const attack = e.attack;
+    if (!attack || attack.stage !== 'windup') continue;
+    if (e.type === 'shaman') {
+      drawZone({ x: attack.targetX, y: attack.targetY, radius: e.ability.radius, warning: e.ability.warning, color: e.color }, t);
+      continue;
+    }
+    const reach = e.type === 'charger' ? e.ability.speed * e.ability.duration : e.ability.range;
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(Math.atan2(attack.dy, attack.dx));
+    if (e.type === 'charger') {
+      ctx.fillStyle = e.color + '16'; ctx.fillRect(0, -e.radius, reach, e.radius * 2);
+      ctx.strokeStyle = e.color + '90'; ctx.lineWidth = 1; ctx.setLineDash([8, 6]); ctx.strokeRect(0, -e.radius, reach, e.radius * 2);
+    }
+    ctx.strokeStyle = e.color + 'b0'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+    ctx.beginPath(); ctx.moveTo(e.radius + 15, 0); ctx.lineTo(reach, 0); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(reach - 12, -7); ctx.lineTo(reach, 0); ctx.lineTo(reach - 12, 7); ctx.stroke(); ctx.restore();
+  }
+}
 function render(t) {
   const camera = cameraFor(game.player);
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
   ctx.save(); ctx.translate(-camera.x, -camera.y);
   drawBackground(t, camera);
+  drawAttackWarnings(camera, t);
   if (game.state === 'ready') {
     for (let i = 0; i < 6; i++) drawEnemy({ x: [180, 1050, 1100, 230, 900, 370][i] + camera.x, y: [170, 140, 500, 570, 600, 90][i] + camera.y, radius: 20, color: '#f27899', type: 'crawler', phase: i, hp: 45, maxHp: 45 }, t);
   }
@@ -300,6 +367,14 @@ function render(t) {
     ctx.strokeStyle = bullet.color + '70'; ctx.lineWidth = bullet.radius;
     ctx.beginPath(); ctx.moveTo(bullet.x - bullet.vx * .018, bullet.y - bullet.vy * .018); ctx.lineTo(bullet.x, bullet.y); ctx.stroke();
     circle(bullet.x, bullet.y, bullet.radius * .75, bullet.color);
+  }
+  for (const bullet of game.hostileBullets) {
+    if (!inView(bullet, camera, 40)) continue;
+    ctx.strokeStyle = bullet.color + '90'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(bullet.x - bullet.vx * .07, bullet.y - bullet.vy * .07); ctx.lineTo(bullet.x, bullet.y); ctx.stroke();
+    ctx.save(); ctx.translate(bullet.x, bullet.y); ctx.rotate(t * 5); ctx.fillStyle = bullet.color;
+    ctx.beginPath(); ctx.moveTo(0, -bullet.radius - 3); ctx.lineTo(bullet.radius + 3, 0); ctx.lineTo(0, bullet.radius + 3); ctx.lineTo(-bullet.radius - 3, 0); ctx.closePath(); ctx.fill();
+    circle(0, 0, 3, '#e5fbff'); ctx.restore();
   }
   for (const enemy of game.enemies) if (inView(enemy, camera, 70)) drawEnemy(enemy, t);
   drawPlayer(t);
@@ -354,6 +429,7 @@ function frame(timestamp) {
       tone(s.frequency, s.duration, s.type, s.volume);
     }
     if (event.type === 'equip') tone(550, .06, 'sine', .02);
+    if (event.type === 'enemy-attack') tone(event.enemyType === 'hexer' ? 620 : event.enemyType === 'shaman' ? 260 : 110, .16, 'triangle', .022);
     if (event.type === 'kill') tone(90, .09, 'sawtooth', .018);
     if (event.type === 'hurt') tone(80, .2, 'sawtooth', .045);
     if (event.type === 'dash') tone(450, .15, 'sine', .025);

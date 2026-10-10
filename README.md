@@ -1,6 +1,6 @@
 # Abomination Arena
 
-2D browser survival game on an endless industrial map, with a player-following camera, progressively harder monster waves, upgrades, keyboard/mouse and touch controls. Built with Canvas and plain JavaScript; no runtime dependencies or external assets.
+2D browser survival game on an endless industrial map, with a player-following camera, six enemy types, telegraphed magic and rush attacks, progressively harder waves, upgrades, keyboard/mouse and touch controls. Built with Canvas and plain JavaScript; no runtime dependencies or external assets.
 
 For the complete project description, visual direction, gameplay balance and guidance for continuing development, read the [Bulgarian project guide](docs/PROJECT_GUIDE.bg.md).
 
@@ -39,10 +39,25 @@ All three weapons are available during combat, with unlimited ammunition:
 
 Switching takes at least 0.12 seconds and preserves any longer recovery from the previous shot. Power upgrades add 40% of each weapon's base damage per selection; speed upgrades reduce each weapon's shot interval by 18%, with individual minimum intervals. Upgrades apply to all weapons for the current run. Restart restores the default rifle and base stats.
 
+## Enemies and abilities
+
+| Enemy | First wave | Behavior |
+| --- | --- | --- |
+| Crawler | 1 | Chases and deals contact damage |
+| Runner | 2 | Fast, fragile pursuer |
+| Tank | 3 | High health; 22 contact damage |
+| Mage | 4 | Keeps distance; locks aim, warns for 0.7 s, then fires a dodgeable bolt for 16 damage |
+| Charger | 5 | Warns for 0.85 s, rushes in a fixed direction for 24 damage, then rests |
+| Shaman | 6 | Marks your position; after casting and a 1.1 s ground warning, a curse lasts 2.4 s, slows movement by 35% and deals 10 damage per hit |
+
+Enemies are selected randomly from the unlocked pool. The first three waves keep their original mix. Later waves add weighted chances for each new type; the existing health and movement scaling still applies. Spell damage, timings and rush speed stay fixed.
+
+Dashed lines and ground circles warn before attacks; move sideways, leave the circle or dash. All damage shares the 0.8-second protection after a hit, including overlapping curses. Dash prevents magic damage and keeps its full speed inside curses. Killing a caster during windup cancels its cast; already deployed spells last until expiry or wave completion. Pause freezes attacks, and restart clears them. Expand the Bulgarian enemy dossier below the arena for attack descriptions and unlock waves.
+
 ## Test
 
 ```sh
 npm test
 ```
 
-The 23 tests exercise unrestricted movement, camera and targeting transforms, sector generation, off-screen spawning, distant pursuers, weapon cadence/spread/range, switching, shared upgrades, combat, dash protection, wave progression and game-over behavior. The interface is in Bulgarian.
+The 37 tests exercise unrestricted movement, camera and targeting transforms, sector generation, off-screen spawning, distant pursuers, weapon cadence/spread/range, switching, shared upgrades, combat, enemy unlocks, magic collision, curse slowing, committed rushes, dash protection, pause, hazard cleanup, wave progression and game-over behavior. The interface is in Bulgarian.
