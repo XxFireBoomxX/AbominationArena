@@ -26,11 +26,20 @@
           <div id="wave-toast" class="wave-toast" aria-live="polite"></div>
           <div class="touch-controls"><div id="joystick" aria-label="Плъзни за движение"><span></span></div><button id="touch-dash" aria-label="Рязък скок">↯</button></div>
         </div>
+        <section class="shop-panel" id="shop-panel" aria-labelledby="shop-title" hidden>
+          <div class="shop-heading"><div><p class="eyebrow">FIELD SUPPLY / МЕЖДУ ВЪЛНИТЕ</p><h2 id="shop-title" tabindex="-1">Магазин</h2></div><div class="shop-wallet">◈ <b id="shop-money">0</b><small>МОНЕТИ</small></div></div>
+          <p class="shop-intro" id="shop-intro"></p>
+          <p class="shop-feedback" id="shop-feedback" role="status"></p>
+          <div class="shop-grid" id="shop-items"></div>
+          <section class="shop-recipes" aria-labelledby="recipes-title"><h3 id="recipes-title">Комбинации</h3><p>Двата предмета активират ефекта веднага, при всеки ранг.</p><div id="shop-synergies"></div></section>
+          <div class="shop-actions"><span>Купи няколко предмета или спести за после.</span><button class="primary-button" id="next-wave">СЛЕДВАЩА ВЪЛНА <span>→</span></button></div>
+        </section>
         <div class="weapon-panel" id="weapon-panel">
           <div class="weapon-heading"><span class="eyebrow">СНАРЯЖЕНИЕ</span><span class="weapon-hint">КЛАВИШИ 1–3 / ДОКОСНИ ЗА СМЯНА</span></div>
           <div class="weapon-options" id="weapons" role="group" aria-label="Избор на оръжие"></div>
           <div class="weapon-detail"><span id="weapon-description">Точна стрелба · далечна дистанция</span><span id="weapon-stats">25 щети</span></div>
         </div>
+        <section class="item-panel" id="item-panel" aria-label="Предмети в текущия опит"><p class="eyebrow">ПРЕДМЕТИ / ТЕКУЩ ОПИТ</p><div id="inventory">Събирай монети. Магазинът отваря след вълната.</div><div id="active-synergies"></div></section>
         <section class="run-report" id="run-report" aria-labelledby="report-title" tabindex="-1" hidden></section>
         <div class="arena-footer"><span><span class="mint">●</span> <span id="footer-status">Системата е готова</span></span><span>БЕЗ ПОЩАДА. БЕЗ КРАЙ.</span></div>
       </section>
@@ -38,8 +47,9 @@
         <section class="stat-card wave-card"><p class="eyebrow">ТЕКУЩА ВЪЛНА</p><div class="wave-number"><span id="wave">01</span><span class="wave-tag">THREAT LEVEL<br><b id="threat">НИСЪК</b></span></div><div class="wave-clock" id="wave-clock"><span id="wave-clock-label">ДО КРАЯ НА ВЪЛНАТА</span><b id="wave-countdown">01:00</b></div><div class="progress-track" id="wave-track" role="progressbar" aria-label="Оцеляване във вълната" aria-valuemin="0" aria-valuemax="60" aria-valuenow="0"><div id="wave-progress"></div></div><p class="muted small" id="wave-detail">Оцелей 60 секунди.</p></section>
         <section class="stat-card"><div class="stat-heading"><span class="eyebrow">ЖИЗНЕНИ ПОКАЗАТЕЛИ</span><span class="mint" id="health-number">100 / 100</span></div><div class="health-track"><div id="health"></div></div><div class="dash-info"><span>↯ Рязък скок</span><b id="dash-status">ГОТОВ</b></div></section>
         <section class="stat-card score-card"><p class="eyebrow">ТВОЯТ РЕЗУЛТАТ</p><div class="score" id="score">000000</div><div class="score-bottom"><span>Победени <b id="kills">0</b></span><span>Време <b id="time">00:00</b></span></div></section>
+        <section class="stat-card money-card"><p class="eyebrow">ПОРТФЕЙЛ / ТОЗИ ОПИТ</p><div class="money-value">◈ <b id="money">0</b><span>монети</span></div><p>Доближи златните монети от враговете. Харчи ги между вълните.</p></section>
         <section class="record-card"><span class="record-icon">◇</span><div><p class="eyebrow">ЛИЧЕН РЕКОРД</p><b id="record">000000</b></div><span class="record-arrow">↗</span></section>
-        <section class="tip-card"><span>✦</span><p>Не спирай да се движиш.<br><span>След всяка вълна избери подобрение.</span></p></section>
+        <section class="tip-card"><span>✦</span><p>Не спирай да се движиш.<br><span>Събирай монети и комбинирай предмети.</span></p></section>
       </aside>
     </div>
     <footer class="controls"><span class="eyebrow">КАК СЕ ИГРАЕ</span><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Движение</span></div><div><span class="mouse-icon">↖</span><span>Прицелване и стрелба</span></div><div><kbd>SPACE</kbd><span>Рязък скок</span></div><div><kbd>1–3</kbd><span>Оръжие</span></div><div><kbd>P</kbd><span>Пауза</span></div></footer>

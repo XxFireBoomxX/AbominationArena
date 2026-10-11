@@ -80,31 +80,35 @@ test('switching preserves an existing shot and cannot bypass its recovery', () =
   assert.equal(pellet.color, '#e6f5a1');
 });
 
-test('power and speed upgrades follow weapon changes and respect individual speed limits', () => {
+test('items follow weapon changes, respect rank limits and reset on a new run', () => {
   const game = equipped();
-  game.state = 'upgrade'; game.upgrade('power');
-  game.state = 'upgrade'; game.upgrade('speed');
-  const expectedDamage = { rifle: 35, smg: 15.4, shotgun: 12.6 };
-  const expectedIntervals = { rifle: .17 * .82, smg: .075 * .82, shotgun: .65 * .82 };
+  game.state = 'shop'; game.money = 10000;
+  assert.equal(game.buyItem('core'), true); assert.equal(game.buyItem('trigger'), true);
+  game.nextWave();
+  const expectedDamage = { rifle: 32.5, smg: 14.3, shotgun: 11.7 };
   for (const id of WEAPON_IDS) {
     game.selectWeapon(id);
     assert.ok(Math.abs(game.damage - expectedDamage[id]) < .00001);
-    assert.ok(Math.abs(game.fireInterval - expectedIntervals[id]) < .00001);
+    assert.ok(Math.abs(game.fireInterval - game.weapon.interval * .88) < .00001);
   }
-  for (let i = 0; i < 40; i++) { game.state = 'upgrade'; game.upgrade('speed'); }
-  const minimum = { rifle: .065, smg: .035, shotgun: .25 };
-  for (const id of WEAPON_IDS) { game.selectWeapon(id); assert.equal(game.fireInterval, minimum[id]); }
+  game.state = 'shop';
+  assert.equal(game.buyItem('trigger'), true); assert.equal(game.buyItem('trigger'), true);
+  assert.equal(game.buyItem('trigger'), false);
+  game.nextWave();
+  for (const id of WEAPON_IDS) {
+    game.selectWeapon(id);
+    assert.ok(game.fireInterval >= game.weapon.minInterval);
+    assert.ok(Math.abs(game.fireInterval - game.weapon.interval * .88 ** 3) < .00001);
+  }
   game.reset();
-  assert.equal(game.weaponId, 'rifle');
-  assert.equal(game.damage, 25);
-  assert.equal(game.fireInterval, .17);
-  assert.equal(game.powerLevel, 0);
-  assert.equal(game.speedLevel, 0);
+  assert.equal(game.weaponId, 'rifle'); assert.equal(game.damage, 25);
+  assert.equal(game.fireInterval, .17); assert.equal(game.inventory.core, 0);
+  assert.equal(game.inventory.trigger, 0); assert.equal(game.money, 0);
 });
 
 test('selection rejects invalid IDs and is unavailable outside active combat', () => {
   const game = equipped();
-  for (const state of ['ready', 'paused', 'upgrade', 'gameover']) {
+  for (const state of ['ready', 'paused', 'shop', 'gameover']) {
     game.state = state;
     assert.equal(game.selectWeapon('shotgun'), false);
     assert.equal(game.weaponId, 'rifle');

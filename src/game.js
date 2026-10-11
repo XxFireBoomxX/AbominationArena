@@ -2,6 +2,7 @@ import { Arena, WIDTH, HEIGHT, WAVE_DURATION } from './engine.js';
 import { cameraFor, screenToWorld, inView, visibleSectors, SECTOR_SIZE } from './world.js';
 import { WEAPONS, WEAPON_IDS } from './weapons.js';
 import { ENEMIES, ENEMY_IDS } from './enemies.js';
+import { ITEMS, ITEM_IDS, SYNERGIES, SYNERGY_IDS, SURVIVAL_COINS, MEDKIT_HEALING } from './items.js';
 
 const $ = id => document.getElementById(id);
 const canvas = $('game');
@@ -12,6 +13,7 @@ const pointer = { x: WIDTH * .7, y: HEIGHT * .5, down: false };
 const touch = { x: 0, y: 0, active: false, enabled: matchMedia('(pointer:coarse)').matches };
 let dash = false, lastTime = 0, previousState = '', toastTimer, audio, sound = false;
 let weaponHUDKey = '';
+let inventoryHUDKey = '';
 let best = 0;
 try { best = Number(localStorage.getItem('abomination-record')) || 0; } catch { /* Storage may be unavailable in private mode. */ }
 const padded = n => String(n).padStart(6, '0');
@@ -58,7 +60,7 @@ function equipWeapon(id) {
   }
 }
 function updateWeaponHUD() {
-  const key = `${game.weaponId}:${game.state}:${game.powerLevel}:${game.speedLevel}`;
+  const key = `${game.weaponId}:${game.state}:${game.inventory.core}:${game.inventory.trigger}`;
   if (key === weaponHUDKey) return;
   weaponHUDKey = key;
   document.querySelectorAll('[data-weapon]').forEach(button => {
@@ -177,8 +179,9 @@ function showRunReport(report) {
       ${metric('Изстрели', numberLabel(report.shots))}
       ${metric('Точност на снарядите', numberLabel(report.accuracy) + '%')}
       ${metric('Рязки скокове', numberLabel(report.dashes))}
+      ${metric('Критични попадения', numberLabel(report.criticalHits))}
     </dl>
-    <p class="report-note">${numberLabel(report.hits)} попадения / ${numberLabel(report.projectiles)} снаряда. Всяка сачма се брои отделно; неизползвано оръжие има 0% точност.</p>
+    <p class="report-note">${numberLabel(report.hitProjectiles)} попаднали / ${numberLabel(report.projectiles)} изстреляни снаряда; ${numberLabel(report.hits)} общо попадения. Пробиването може да удари няколко цели, но всеки снаряд се брои веднъж за точността. Всяка сачма се брои отделно.</p>
     <h3>Победени противници <span>${numberLabel(report.kills)} общо</span></h3>
     <dl class="report-enemies">${ENEMY_IDS.map(id => `<div style="--enemy-color:${ENEMIES[id].color}"><dt>${ENEMIES[id].name}</dt><dd>${numberLabel(report.killsByType[id])}</dd></div>`).join('')}</dl>
     <h3>Снаряжение</h3>
@@ -186,35 +189,85 @@ function showRunReport(report) {
       const stats = report.weapons[id];
       return `<tr><th scope="row" style="color:${WEAPONS[id].color}">${WEAPONS[id].name}</th><td>${numberLabel(stats.shots)}</td><td>${numberLabel(stats.accuracy)}%</td><td>${numberLabel(stats.damage)}</td><td>${numberLabel(stats.kills)}</td></tr>`;
     }).join('')}</tbody></table>
-    <h3>Подобрения</h3>
-    <dl class="report-upgrades">${metric('Сила', report.upgrades.power)}${metric('Бърза стрелба', report.upgrades.speed)}${metric('Броня', report.upgrades.health)}</dl>
+    <h3>Икономика и предмети</h3>
+    <dl class="report-economy">${metric('Събрани монети', numberLabel(report.coinsCollected))}${metric('Бонус за оцеляване', numberLabel(report.survivalCoins))}${metric('Спечелени общо', numberLabel(report.moneyEarned))}${metric('Похарчени', numberLabel(report.moneySpent))}${metric('Останали', numberLabel(report.money))}${metric('Аптечки', numberLabel(report.medkits))}</dl>
+    <div class="inventory-chips">${ITEM_IDS.filter(id => report.inventory[id]).map(id => `<span>${ITEMS[id].icon} ${ITEMS[id].name} · ${report.inventory[id]}/${ITEMS[id].maxRank}</span>`).join('') || '<p class="report-note">Няма купени предмети.</p>'}</div>
+    <p class="report-note">Комбинации: ${report.synergies.map(id => SYNERGIES[id].name).join(' · ') || 'няма активни'}.</p>
     <p class="report-note">В текущата вълна: ${timeLabel(report.waveDuration - report.waveRemaining)} / ${timeLabel(report.waveDuration)}. Максимален живот: ${numberLabel(report.maxHp)}. Щетите отчитат реално отнетия живот. Времето включва само активната битка.</p>
     <button class="primary-button report-restart" id="report-restart">НОВ ОПИТ <span>↻</span></button>`;
   $('report-restart').addEventListener('click', () => { start(); canvas.scrollIntoView({ block: 'center' }); });
 }
 
+function updateInventory() {
+  const key = JSON.stringify(game.inventory);
+  if (key === inventoryHUDKey) return;
+  inventoryHUDKey = key;
+  $('inventory').innerHTML = `<div class="inventory-chips">${ITEM_IDS.filter(id => game.inventory[id]).map(id => `<span title="${ITEMS[id].description}">${ITEMS[id].icon} ${ITEMS[id].name} <b>${game.inventory[id]}/${ITEMS[id].maxRank}</b></span>`).join('')}</div>`;
+  if (!ITEM_IDS.some(id => game.inventory[id])) $('inventory').textContent = 'Събирай монети. Магазинът отваря след вълната.';
+  $('active-synergies').innerHTML = game.synergies.map(id => `<p class="active-recipe"><b>✦ ${SYNERGIES[id].name}</b> ${SYNERGIES[id].description}</p>`).join('');
+}
+function renderShop() {
+  $('shop-money').textContent = numberLabel(game.money);
+  $('shop-intro').textContent = `Вълна ${game.wave} е премината · +${SURVIVAL_COINS} монети за оцеляване. Живот: ${Math.ceil(game.player.hp)} / ${game.player.maxHp}. Парите и предметите остават до края на опита. Несъбраните монети изчезват след 20 секунди или при края на вълната.`;
+  $('shop-items').innerHTML = [...ITEM_IDS, 'medkit'].map(id => {
+    const consumable = id === 'medkit';
+    const item = consumable ? { name: 'Аптечка', icon: '✚', description: `Възстановява до ${MEDKIT_HEALING} живот веднага. Еднократна употреба.` } : ITEMS[id];
+    const { price, reason } = game.purchaseStatus(id);
+    const rank = consumable ? 'КОНСУМАТИВ' : `РАНГ ${game.inventory[id]} / ${item.maxRank}`;
+    const maxed = !consumable && game.inventory[id] >= item.maxRank;
+    const next = maxed ? 'Максимален ранг' : consumable ? 'Използвай' : game.inventory[id] ? `Ранг ${game.inventory[id] + 1}` : 'Купи';
+    return `<article class="shop-item"><div class="shop-item-top"><span class="item-icon" aria-hidden="true">${item.icon}</span><small>${rank}</small></div><h3>${item.name}</h3><p>${item.description}</p><div class="shop-item-bottom"><span class="item-price">${maxed ? '3 / 3' : '◈ ' + price}</span><button class="buy-button" data-buy="${id}" ${reason ? 'disabled' : ''} aria-label="${next}: ${item.name}${maxed ? '' : ', ' + price + ' монети'}">${maxed ? 'Макс.' : next}</button></div><small class="purchase-reason">${reason || 'Достъпно'}</small></article>`;
+  }).join('');
+  $('shop-synergies').innerHTML = SYNERGY_IDS.map(id => {
+    const recipe = SYNERGIES[id], active = game.synergies.includes(id);
+    return `<article class="recipe ${active ? 'active' : ''}"><div><b>${active ? '✦ ' : ''}${recipe.name}</b><span>${active ? 'АКТИВНА' : 'КОМБИНАЦИЯ'}</span></div><p class="recipe-parts">${recipe.items.map(item => `<span class="${game.inventory[item] ? 'owned' : ''}">${ITEMS[item].name} ${game.inventory[item] ? '✓' : ''}</span>`).join(' + ')}</p><p>${recipe.description}</p></article>`;
+  }).join('');
+  $('shop-items').querySelectorAll('[data-buy]').forEach(button => button.addEventListener('click', () => {
+    const before = game.synergies;
+    if (!game.buyItem(button.dataset.buy)) return;
+    const unlocked = game.synergies.filter(id => !before.includes(id));
+    const name = button.dataset.buy === 'medkit' ? 'Аптечка' : ITEMS[button.dataset.buy].name;
+    $('shop-feedback').textContent = `${button.dataset.buy === 'medkit' ? 'Използвана аптечка.' : 'Покупка: ' + name + '.'}${unlocked.length ? ' Нова комбинация: ' + unlocked.map(id => SYNERGIES[id].name).join(', ') + '.' : ''}`;
+    renderShop(); updateHUD();
+    const nextButton = $('shop-items').querySelector(`[data-buy="${button.dataset.buy}"]`);
+    (nextButton.disabled ? $('next-wave') : nextButton).focus({ preventScroll: true });
+  }));
+}
+$('next-wave').addEventListener('click', () => {
+  if (!game.nextWave()) return;
+  clearInput(); syncOverlay(); waveToast();
+  canvas.scrollIntoView({ block: 'center' });
+});
+
 function syncOverlay() {
   if (previousState === game.state) return;
   previousState = game.state;
   const overlay = $('overlay'), content = $('overlay-content');
-  overlay.classList.toggle('hidden', game.state === 'playing');
+  overlay.classList.toggle('hidden', ['playing', 'shop'].includes(game.state));
   overlay.classList.toggle('death-overlay', game.state === 'gameover');
   $('run-report').hidden = game.state !== 'gameover';
   $('weapon-panel').hidden = game.state === 'gameover';
+  $('item-panel').hidden = game.state === 'gameover';
+  $('arena').hidden = game.state === 'shop';
+  $('shop-panel').hidden = game.state !== 'shop';
+  $('shop-panel').closest('.arena-panel').classList.toggle('shopping', game.state === 'shop');
   $('pause').disabled = !['playing', 'paused'].includes(game.state);
   $('pause').innerHTML = game.state === 'paused' ? '▷ <span>Продължи</span>' : 'Ⅱ <span>Пауза</span>';
-  $('status').textContent = { ready: 'В ГОТОВНОСТ', playing: 'БИТКАТА Е В ХОД', paused: 'ПАУЗА', upgrade: 'ВЪЛНАТА Е ПРЕМИНАТА', gameover: 'СИГНАЛЪТ Е ЗАГУБЕН' }[game.state];
+  $('status').textContent = { ready: 'В ГОТОВНОСТ', playing: 'БИТКАТА Е В ХОД', paused: 'ПАУЗА', shop: 'МАГАЗИНЪТ Е ОТВОРЕН', gameover: 'СИГНАЛЪТ Е ЗАГУБЕН' }[game.state];
   updateWeaponHUD();
   if (game.state === 'playing') { lastTime = 0; canvas.focus({ preventScroll: true }); }
   if (game.state === 'ready') {
-    content.innerHTML = '<div class="overlay-badge">SURVIVAL PROTOCOL / 01</div><h2>ABOMINATION<br><span>ARENA</span></h2><p>Оцелей 60 секунди във всяка вълна.<br>Избери подобрение и посрещни следващата.</p><button class="primary-button" id="start">ВЛЕЗ В АРЕНАТА <span>↗</span></button><div class="overlay-note">' + (touch.enabled ? 'ПЛЪЗНИ ЗА ДВИЖЕНИЕ · АВТОМАТИЧНА СТРЕЛБА' : 'WASD ЗА ДВИЖЕНИЕ · ЗАДРЪЖ ЛЯВ БУТОН ЗА СТРЕЛБА') + '</div>';
+    content.innerHTML = '<div class="overlay-badge">SURVIVAL PROTOCOL / 01</div><h2>ABOMINATION<br><span>ARENA</span></h2><p>Оцелей 60 секунди. Събирай монети от враговете.<br>Купувай и комбинирай предмети между вълните.</p><button class="primary-button" id="start">ВЛЕЗ В АРЕНАТА <span>↗</span></button><div class="overlay-note">' + (touch.enabled ? 'ПЛЪЗНИ ЗА ДВИЖЕНИЕ · АВТОМАТИЧНА СТРЕЛБА' : 'WASD ЗА ДВИЖЕНИЕ · ЗАДРЪЖ ЛЯВ БУТОН ЗА СТРЕЛБА') + '</div>';
     $('start').addEventListener('click', start);
   } else if (game.state === 'paused') {
     content.innerHTML = '<div class="overlay-badge">ПРОТОКОЛЪТ Е ЗАДЪРЖАН</div><h2>Поеми <span>въздух.</span></h2><p>Арената ще те изчака.</p><button class="primary-button" id="resume">ПРОДЪЛЖИ <span>→</span></button>';
     $('resume').addEventListener('click', pause);
-  } else if (game.state === 'upgrade') {
-    content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Оцеля 60 секунди. Избери подобрение.<br>Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+40% от базовите щети<br>за всички оръжия</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
-    content.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => { game.upgrade(button.dataset.upgrade); clearInput(); syncOverlay(); waveToast(); }));
+  } else if (game.state === 'shop') {
+    clearInput(); clearTimeout(toastTimer); $('wave-toast').classList.remove('show');
+    $('shop-feedback').textContent = '';
+    renderShop();
+    $('shop-title').focus({ preventScroll: true });
+    $('shop-panel').scrollIntoView({ block: 'start' });
   } else if (game.state === 'gameover') {
     clearInput();
     clearTimeout(toastTimer); $('wave-toast').classList.remove('show');
@@ -233,11 +286,12 @@ function syncOverlay() {
       $('run-report').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'instant' : 'smooth' });
     });
   }
-  if (game.state !== 'playing') content.querySelector('button')?.focus({ preventScroll: true });
+  if (!['playing', 'shop'].includes(game.state)) content.querySelector('button')?.focus({ preventScroll: true });
 }
 
 function updateHUD() {
   updateWeaponHUD();
+  updateInventory();
   const p = game.player;
   $('wave').textContent = String(game.wave).padStart(2, '0');
   $('threat').textContent = game.wave < 3 ? 'НИСЪК' : game.wave < 6 ? 'ВИСОК' : 'КРИТИЧЕН';
@@ -247,7 +301,7 @@ function updateHUD() {
   $('wave-track').setAttribute('aria-valuetext', `${Math.ceil(game.waveRemaining)} секунди до края`);
   $('wave-countdown').textContent = countdownLabel(game.waveRemaining);
   $('wave-clock').classList.toggle('urgent', game.state === 'playing' && game.waveRemaining <= 10);
-  $('wave-clock-label').textContent = game.state === 'upgrade' ? 'ВЪЛНАТА Е ПРЕМИНАТА' : game.state === 'paused' ? 'ПАУЗА' : 'ДО КРАЯ НА ВЪЛНАТА';
+  $('wave-clock-label').textContent = game.state === 'shop' ? 'ВЪЛНАТА Е ПРЕМИНАТА' : game.state === 'paused' ? 'ПАУЗА' : 'ДО КРАЯ НА ВЪЛНАТА';
   $('wave-detail').textContent = `${game.waveKills} победени · ${game.enemies.length} активни`;
   $('health-number').textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
   $('health').style.width = `${p.hp / p.maxHp * 100}%`;
@@ -256,6 +310,7 @@ function updateHUD() {
   $('score').textContent = padded(game.score);
   $('kills').textContent = game.kills;
   $('time').textContent = timeLabel(game.time);
+  $('money').textContent = numberLabel(game.money);
   $('footer-status').textContent = game.state === 'playing' ? `X ${Math.round(p.x)} · Y ${Math.round(p.y)}` : game.state === 'gameover' ? 'Връзката е прекъсната' : 'Системата е готова';
   $('sector').textContent = `SECTOR ${Math.floor(p.x / SECTOR_SIZE)} : ${Math.floor(p.y / SECTOR_SIZE)}`;
 }
@@ -414,6 +469,15 @@ function render(t) {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
   ctx.save(); ctx.translate(-camera.x, -camera.y);
   drawBackground(t, camera);
+  for (const coin of game.coins) {
+    if (!inView(coin, camera, 15)) continue;
+    ctx.save(); ctx.globalAlpha = Math.min(1, coin.life / 3);
+    circle(coin.x, coin.y, 13, '#f1cb7818');
+    circle(coin.x, coin.y, 7, '#a77730', '#f1cb78');
+    ctx.fillStyle = '#ffe4a6'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('◆', coin.x, coin.y + 3);
+    ctx.restore();
+  }
   drawAttackWarnings(camera, t);
   if (game.state === 'ready') {
     for (let i = 0; i < 6; i++) drawEnemy({ x: [180, 1050, 1100, 230, 900, 370][i] + camera.x, y: [170, 140, 500, 570, 600, 90][i] + camera.y, radius: 20, color: '#f27899', type: 'crawler', phase: i, hp: 45, maxHp: 45 }, t);
@@ -489,7 +553,10 @@ function frame(timestamp) {
     if (event.type === 'kill') tone(90, .09, 'sawtooth', .018);
     if (event.type === 'hurt') tone(80, .2, 'sawtooth', .045);
     if (event.type === 'dash') tone(450, .15, 'sine', .025);
-    if (event.type === 'upgrade') tone(850, .3);
+    if (event.type === 'shop') tone(850, .3);
+    if (event.type === 'coin') tone(950, .04, 'sine', .012);
+    if (event.type === 'purchase') tone(720, .12, 'sine', .025);
+    if (event.type === 'synergy') tone(1100, .24, 'triangle', .03);
     if (event.type === 'gameover') tone(160, .6, 'triangle', .07);
   }
   syncOverlay(); updateHUD(); render(timestamp / 1000);

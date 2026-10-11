@@ -48,22 +48,22 @@ test('contact damage has an invulnerability period; dash prevents damage and has
   assert.ok(dodging.player.dashCooldown < remaining);
 });
 
-test('surviving the time limit opens upgrades, then starts a fresh minute and restores health', () => {
+test('surviving the time limit opens the shop, then starts a fresh minute without free healing', () => {
   const game = arena();
   game.waveRemaining = .05;
   game.player.hp = 50;
   game.enemies.push(enemy());
   game.step(.05, { fire: true, aimX: WIDTH, aimY: 0 });
-  assert.equal(game.state, 'upgrade');
+  assert.equal(game.state, 'shop');
   assert.equal(game.score, 600);
   const before = game.time;
   game.step(.05, { moveX: 1 });
   assert.equal(game.time, before);
-  game.upgrade('power');
+  game.nextWave();
   assert.equal(game.state, 'playing');
   assert.equal(game.wave, 2);
-  assert.equal(game.damage, 35);
-  assert.equal(game.player.hp, 85);
+  assert.equal(game.damage, 25);
+  assert.equal(game.player.hp, 50);
   assert.equal(game.waveRemaining, WAVE_DURATION);
   assert.equal(game.completedWaves, 1);
   assert.equal(game.spawned, 0);

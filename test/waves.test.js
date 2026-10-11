@@ -18,7 +18,7 @@ test('a wave lasts the full minute even with no enemies or kills', () => {
   assert.equal(game.state, 'playing'); assert.ok(game.waveRemaining > 0);
   assert.equal(game.score, 0); assert.equal(game.completedWaves, 0);
   game.step(.05);
-  assert.equal(game.state, 'upgrade'); assert.equal(game.waveRemaining, 0);
+  assert.equal(game.state, 'shop'); assert.equal(game.waveRemaining, 0);
   assert.equal(game.time, WAVE_DURATION); assert.equal(game.kills, 0);
   assert.equal(game.score, 500); assert.equal(game.completedWaves, 1);
   game.step(5); assert.equal(game.score, 500); assert.equal(game.time, WAVE_DURATION);
@@ -44,23 +44,23 @@ test('expiry clears live opponents and all attacks without granting their kills 
   game.zones.push({ x: 500, y: 500, warning: 0, life: 2.4, radius: 76, damage: 10, slow: .65 });
   game.step(.05, { moveX: 1 });
   assert.equal(game.player.x, 5, 'Only the remaining 0.02 seconds may move the player');
-  assert.equal(game.state, 'upgrade'); assert.equal(game.score, 500);
+  assert.equal(game.state, 'shop'); assert.equal(game.score, 500);
   assert.equal(game.player.hp, 100); assert.equal(game.kills, 0);
   assert.equal(game.stats.damageDealt, 0); assert.equal(game.stats.damageTaken, 0);
   for (const key of ['enemies', 'bullets', 'hostileBullets', 'zones']) assert.equal(game[key].length, 0);
-  game.upgrade('power');
+  game.nextWave();
   assert.equal(game.wave, 2); assert.equal(game.waveRemaining, WAVE_DURATION);
   assert.equal(game.waveKills, 0); assert.equal(game.spawned, 0);
   game.spawnTimer = 100;
   stepSeconds(game, WAVE_DURATION);
-  assert.equal(game.state, 'upgrade'); assert.equal(game.completedWaves, 2);
+  assert.equal(game.state, 'shop'); assert.equal(game.completedWaves, 2);
   assert.equal(game.time, 120); assert.equal(game.score, 1500);
 });
 
-test('pause, upgrade and game over freeze the minute and accumulated combat time', () => {
+test('pause, shop and game over freeze the minute and accumulated combat time', () => {
   const game = arena(); game.step(.25);
   assert.equal(game.waveRemaining, 59.75);
-  for (const state of ['paused', 'upgrade', 'gameover']) {
+  for (const state of ['paused', 'shop', 'gameover']) {
     game.state = state; const snapshot = game.getRunReport();
     game.step(30, { fire: true, dash: true, moveX: 1 });
     assert.deepEqual(game.getRunReport(), snapshot);
@@ -74,7 +74,7 @@ test('slow frames count actual active seconds without allowing unbounded combat 
   assert.equal(game.time, 1); assert.equal(game.waveRemaining, 59);
   assert.equal(game.player.x, 12.5);
   game.step(120);
-  assert.equal(game.state, 'upgrade'); assert.equal(game.time, 60);
+  assert.equal(game.state, 'shop'); assert.equal(game.time, 60);
   assert.equal(game.waveRemaining, 0);
 });
 
@@ -98,7 +98,7 @@ test('continuous spawning respects the active cap and resumes when a slot opens'
 });
 
 test('restart resets the wave timer, completed waves and report progress', () => {
-  const game = arena(); game.step(60); game.upgrade('health'); game.step(15);
+  const game = arena(); game.step(60); game.nextWave(); game.step(15);
   assert.equal(game.getRunReport().completedWaves, 1);
   assert.equal(game.getRunReport().waveRemaining, 45);
   game.reset(); const report = game.getRunReport();

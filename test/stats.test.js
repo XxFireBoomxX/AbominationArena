@@ -96,21 +96,25 @@ test('blocked hits do not count damage or overwrite a previous cause; dash count
   assert.equal(dodging.getRunReport().damageTaken, 0); assert.equal(dodging.stats.lastHit, null);
 });
 
-test('upgrades preserve combat totals, count valid selections and record actual healing', () => {
+test('purchases preserve combat totals, record actual healing and appear in the report', () => {
   const game = arena(); game.player.hp = 90;
   game.enemies.push(enemy('crawler', { hp: 25 }));
   game.step(.05, { fire: true, aimX: 100, aimY: 0 });
-  game.waveRemaining = .01; game.step(.01); game.upgrade('invalid');
-  assert.equal(game.state, 'upgrade');
-  game.upgrade('health');
-  assert.equal(game.player.hp, 120); assert.equal(game.stats.healing, 30);
-  game.waveRemaining = .01; game.step(.01); game.upgrade('power');
-  assert.equal(game.stats.healing, 30);
-  game.player.hp = 108; game.waveRemaining = .01; game.step(.01); game.upgrade('speed');
+  game.waveRemaining = .01; game.step(.01);
+  assert.equal(game.buyItem('invalid'), false); assert.equal(game.state, 'shop');
+  game.money = 500; game.buyItem('plating');
+  assert.equal(game.player.hp, 115); assert.equal(game.stats.healing, 25);
+  game.buyItem('medkit'); assert.equal(game.stats.healing, 35);
+  game.nextWave(); game.waveRemaining = .01; game.step(.01); game.buyItem('core');
+  assert.equal(game.stats.healing, 35);
+  game.nextWave(); game.player.hp = 108; game.waveRemaining = .01; game.step(.01);
+  game.buyItem('trigger'); game.nextWave();
   const report = game.getRunReport();
-  assert.equal(report.healing, 42); assert.equal(report.maxHp, 120);
+  assert.equal(report.healing, 35); assert.equal(report.maxHp, 125);
   assert.equal(report.wave, 4); assert.equal(report.completedWaves, 3);
-  assert.deepEqual(report.upgrades, { power: 1, speed: 1, health: 1 });
+  assert.equal(report.inventory.plating, 1); assert.equal(report.inventory.core, 1);
+  assert.equal(report.inventory.trigger, 1); assert.equal(report.medkits, 1);
+  assert.equal(report.moneySpent, 275); assert.equal(report.survivalCoins, 120);
   assert.equal(report.shots, 1); assert.equal(report.kills, 1); assert.equal(report.damageDealt, 25);
 });
 
@@ -133,7 +137,7 @@ test('death freezes the report; restart clears all totals without mutating an ea
   for (const type of ENEMY_IDS) assert.equal(next.killsByType[type], 0);
   assert.deepEqual(report, snapshot);
   report.weapons.rifle.shots = 100; report.killsByType.runner = 100;
-  report.upgrades.power = 100; report.deathCause.attack = 'curse';
+  report.inventory.core = 100; report.deathCause.attack = 'curse';
   assert.equal(game.stats.weapons.rifle.shots, 0); assert.equal(game.stats.killsByType.runner, 0);
-  assert.equal(game.stats.upgrades.power, 0);
+  assert.equal(game.inventory.core, 0);
 });
