@@ -1,6 +1,6 @@
 # Abomination Arena
 
-2D browser survival game on an endless industrial map, with a player-following camera, six enemy types, telegraphed magic and rush attacks, progressively harder waves, upgrades, keyboard/mouse and touch controls. Built with Canvas and plain JavaScript; no runtime dependencies or external assets.
+2D browser survival game on an endless industrial map, with a player-following camera, six enemy types, telegraphed magic and rush attacks, progressively harder 60-second survival waves, upgrades, keyboard/mouse and touch controls. Built with Canvas and plain JavaScript; no runtime dependencies or external assets.
 
 For the complete project description, visual direction, gameplay balance and guidance for continuing development, read the [Bulgarian project guide](docs/PROJECT_GUIDE.bg.md).
 
@@ -36,9 +36,11 @@ The expected default address is **https://xxfireboomxx.github.io/AbominationAren
 - P or Escape: pause
 - Touch: drag the joystick to move; shooting and aiming are automatic; tap ↯ to dash; tap an equipment button to change weapons
 
-Defeat every monster in a wave to choose an upgrade and recover health. Faster and tougher enemy types appear as waves progress. Your best score is stored in your browser. Sound is optional and off by default. The game pauses when the tab loses focus.
+Survive 60 seconds in each wave to choose an upgrade and recover health. The countdown and progress bar show time remaining; the last 10 seconds turn pink. Pause, tab switching and upgrade selection freeze the clock. Faster and tougher enemy types appear as waves progress. Your best score is stored in your browser. Sound is optional and off by default. The game pauses when the tab loses focus.
 
-Travel in any direction without map borders. Only visible 640-unit sectors are generated, and revisiting coordinates recreates the same floor decoration. Enemies spawn outside the current view; colored edge arrows point toward off-screen enemies. Pursuers left more than 2560 units away are repositioned beyond the current view with their remaining health, keeping the current wave reachable. Shots and particles expire normally in world coordinates.
+Enemies keep spawning during the minute, up to 80 living opponents at once. Their spawn interval decreases with the wave number, down to 0.25 seconds. Kills award score and combat statistics. Surviving the time limit dismisses remaining enemies and attacks without counting them as kills, awards 500 × wave points and opens upgrades. The next wave starts with a fresh minute. A lethal hit in the final combat tick ends the run before a survival bonus is granted.
+
+Travel in any direction without map borders. Only visible 640-unit sectors are generated, and revisiting coordinates recreates the same floor decoration. Enemies spawn outside the current view; colored edge arrows point toward off-screen enemies. Pursuers left more than 2560 units away are repositioned beyond the current view with their remaining health, maintaining pressure during travel. Shots and particles expire normally in world coordinates.
 
 ## Weapons
 
@@ -71,7 +73,7 @@ Dashed lines and ground circles warn before attacks; move sideways, leave the ci
 
 Every death shows the score, reached wave, combat time and kills, with a detailed report directly below the arena. Use “ПОДРОБНА СТАТИСТИКА” to jump to it, or restart from either button.
 
-The report includes completed waves, actual damage dealt/taken, restored health, shots, projectile accuracy, successful dashes, kills by enemy type, each weapon's shots/accuracy/damage/kills, upgrade selections, maximum health and the enemy/attack responsible for the lethal hit.
+The report includes completed minutes/waves, time survived in the current wave, actual damage dealt/taken, restored health, shots, projectile accuracy, successful dashes, kills by enemy type, each weapon's shots/accuracy/damage/kills, upgrade selections, maximum health and the enemy/attack responsible for the lethal hit.
 
 Accuracy is hits divided by fired projectiles; a shotgun blast is one shot and seven projectiles. Projectiles still in flight at death count as fired. Damage excludes overkill and invulnerability-blocked hits; healing excludes health that was already full. Counters span the entire run, freeze on death and reset for the next run. Detailed reports are shown for the current run; only the existing best score is stored across page reloads.
 
@@ -81,4 +83,4 @@ Accuracy is hits divided by fired projectiles; a shotgun blast is one shot and s
 npm test
 ```
 
-The 45 tests exercise unrestricted movement, camera and targeting transforms, sector generation, off-screen spawning, distant pursuers, weapon cadence/spread/range, switching, shared upgrades, combat, enemy unlocks, magic collision, curse slowing, committed rushes, dash protection, pause, hazard cleanup, wave progression, game-over behavior and run statistics (pellet accuracy, overkill, weapon attribution, all death causes, healing and reset). The interface is in Bulgarian.
+The 53 tests exercise unrestricted movement, camera and targeting transforms, sector generation, off-screen spawning, distant pursuers, weapon cadence/spread/range, switching, shared upgrades, combat, enemy unlocks, magic collision, curse slowing, committed rushes, dash protection, pause, hazard cleanup, time-based progression, continued spawning and its active cap, slow-frame timing, death at expiry, game-over behavior and run statistics (pellet accuracy, overkill, weapon attribution, all death causes, healing and reset). The interface is in Bulgarian.

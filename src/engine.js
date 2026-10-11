@@ -2,6 +2,8 @@ import { WIDTH, spawnPosition } from './world.js';
 import { WEAPONS, WEAPON_IDS } from './weapons.js';
 import { createEnemy, enemyTypeFor, ENEMIES, ENEMY_IDS } from './enemies.js';
 export { WIDTH, HEIGHT } from './world.js';
+export const WAVE_DURATION = 60;
+export const MAX_ACTIVE_ENEMIES = 80;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const segmentDistance = (point, x, y, endX, endY) => {
@@ -24,6 +26,8 @@ export class Arena {
     this.particles = [];
     this.events = [];
     this.wave = 1;
+    this.completedWaves = 0;
+    this.waveRemaining = WAVE_DURATION;
     this.score = 0;
     this.kills = 0;
     this.time = 0;
@@ -35,7 +39,6 @@ export class Arena {
     this.spawnTimer = .7;
     this.spawned = 0;
     this.waveKills = 0;
-    this.target = 8;
     this.stats = {
       shots: 0, projectiles: 0, hits: 0, damageDealt: 0, damageTaken: 0, healing: 0, dashes: 0,
       upgrades: { power: 0, speed: 0, health: 0 }, lastHit: null,
@@ -48,7 +51,8 @@ export class Arena {
     const accuracy = stats => stats.projectiles ? stats.hits / stats.projectiles * 100 : 0;
     // Return independent data so a report remains intact after the next reset.
     return {
-      score: this.score, wave: this.wave, completedWaves: this.wave - 1, time: this.time, kills: this.kills,
+      score: this.score, wave: this.wave, completedWaves: this.completedWaves, time: this.time, kills: this.kills,
+      waveRemaining: this.waveRemaining, waveDuration: WAVE_DURATION,
       maxHp: this.player.maxHp, shots: this.stats.shots, projectiles: this.stats.projectiles,
       hits: this.stats.hits, accuracy: accuracy(this.stats), damageDealt: this.stats.damageDealt,
       damageTaken: this.stats.damageTaken, healing: this.stats.healing, dashes: this.stats.dashes,
@@ -79,7 +83,7 @@ export class Arena {
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + 35);
     this.stats.healing += this.player.hp - beforeHp;
     this.wave++;
-    this.target = 8 + (this.wave - 1) * 4;
+    this.waveRemaining = WAVE_DURATION;
     this.waveKills = 0;
     this.spawned = 0;
     this.spawnTimer = 1;
@@ -178,8 +182,13 @@ export class Arena {
   }
   step(dt, input = {}) {
     if (this.state !== 'playing') return;
-    dt = clamp(dt, 0, .05);
-    this.time += dt;
+    // Count actual active time even when rendering is slow, but keep combat
+    // movement bounded and never simulate past the end of this wave.
+    const elapsed = Number.isFinite(dt) ? clamp(dt, 0, this.waveRemaining) : 0;
+    this.waveRemaining = Math.max(0, this.waveRemaining - elapsed);
+    if (this.waveRemaining < 1e-9) this.waveRemaining = 0;
+    this.time += elapsed;
+    dt = Math.min(elapsed, .05);
     const p = this.player;
     p.invulnerable = Math.max(0, p.invulnerable - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
@@ -232,8 +241,8 @@ export class Arena {
       this.muzzleTime = .06;
       this.events.push({ type: 'shot', weaponId: weapon.id });
     }
-    this.spawnTimer -= dt;
-    if (this.spawned < this.target && this.spawnTimer <= 0) {
+    this.spawnTimer -= elapsed;
+    if (this.enemies.length < MAX_ACTIVE_ENEMIES && this.spawnTimer <= 0 && this.waveRemaining > 0) {
       this.spawnEnemy();
       this.spawnTimer = Math.max(.25, .95 - this.wave * .055);
     }
@@ -293,9 +302,13 @@ export class Arena {
     }
     this.particles = this.particles.filter(particle => particle.life > 0).slice(-450);
     if (p.hp <= 0) { this.state = 'gameover'; this.events.push({ type: 'gameover' }); }
-    else if (this.waveKills >= this.target && this.enemies.length === 0) {
+    else if (this.waveRemaining === 0) {
       this.state = 'upgrade';
-      this.hostileBullets = []; this.zones = []; p.slowed = false;
+      this.completedWaves++;
+      this.time = this.completedWaves * WAVE_DURATION;
+      // Surviving the minute dismisses opponents; it does not award kills.
+      this.enemies = []; this.bullets = []; this.hostileBullets = []; this.zones = [];
+      p.slowed = false; p.dashTime = 0; this.muzzleTime = 0;
       this.score += this.wave * 500;
       this.events.push({ type: 'upgrade' });
     }

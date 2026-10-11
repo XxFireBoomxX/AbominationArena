@@ -1,4 +1,4 @@
-import { Arena, WIDTH, HEIGHT } from './engine.js';
+import { Arena, WIDTH, HEIGHT, WAVE_DURATION } from './engine.js';
 import { cameraFor, screenToWorld, inView, visibleSectors, SECTOR_SIZE } from './world.js';
 import { WEAPONS, WEAPON_IDS } from './weapons.js';
 import { ENEMIES, ENEMY_IDS } from './enemies.js';
@@ -15,7 +15,11 @@ let weaponHUDKey = '';
 let best = 0;
 try { best = Number(localStorage.getItem('abomination-record')) || 0; } catch { /* Storage may be unavailable in private mode. */ }
 const padded = n => String(n).padStart(6, '0');
-const timeLabel = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const timeLabel = seconds => {
+  const whole = Math.floor(seconds + 1e-7);
+  return `${String(Math.floor(whole / 60)).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}`;
+};
+const countdownLabel = seconds => timeLabel(Math.ceil(seconds));
 const numberLabel = value => value.toLocaleString('bg-BG', { maximumFractionDigits: 1 });
 $('record').textContent = padded(best);
 for (const id of ENEMY_IDS) {
@@ -184,7 +188,7 @@ function showRunReport(report) {
     }).join('')}</tbody></table>
     <h3>Подобрения</h3>
     <dl class="report-upgrades">${metric('Сила', report.upgrades.power)}${metric('Бърза стрелба', report.upgrades.speed)}${metric('Броня', report.upgrades.health)}</dl>
-    <p class="report-note">Максимален живот: ${numberLabel(report.maxHp)}. Щетите отчитат реално отнетия живот. Времето включва само активната битка.</p>
+    <p class="report-note">В текущата вълна: ${timeLabel(report.waveDuration - report.waveRemaining)} / ${timeLabel(report.waveDuration)}. Максимален живот: ${numberLabel(report.maxHp)}. Щетите отчитат реално отнетия живот. Времето включва само активната битка.</p>
     <button class="primary-button report-restart" id="report-restart">НОВ ОПИТ <span>↻</span></button>`;
   $('report-restart').addEventListener('click', () => { start(); canvas.scrollIntoView({ block: 'center' }); });
 }
@@ -201,15 +205,15 @@ function syncOverlay() {
   $('pause').innerHTML = game.state === 'paused' ? '▷ <span>Продължи</span>' : 'Ⅱ <span>Пауза</span>';
   $('status').textContent = { ready: 'В ГОТОВНОСТ', playing: 'БИТКАТА Е В ХОД', paused: 'ПАУЗА', upgrade: 'ВЪЛНАТА Е ПРЕМИНАТА', gameover: 'СИГНАЛЪТ Е ЗАГУБЕН' }[game.state];
   updateWeaponHUD();
-  if (game.state === 'playing') canvas.focus({ preventScroll: true });
+  if (game.state === 'playing') { lastTime = 0; canvas.focus({ preventScroll: true }); }
   if (game.state === 'ready') {
-    content.innerHTML = '<div class="overlay-badge">SURVIVAL PROTOCOL / 01</div><h2>ABOMINATION<br><span>ARENA</span></h2><p>Влез в арената. Надживей чудовищата.<br>Стани по-силен с всяка премината вълна.</p><button class="primary-button" id="start">ВЛЕЗ В АРЕНАТА <span>↗</span></button><div class="overlay-note">' + (touch.enabled ? 'ПЛЪЗНИ ЗА ДВИЖЕНИЕ · АВТОМАТИЧНА СТРЕЛБА' : 'WASD ЗА ДВИЖЕНИЕ · ЗАДРЪЖ ЛЯВ БУТОН ЗА СТРЕЛБА') + '</div>';
+    content.innerHTML = '<div class="overlay-badge">SURVIVAL PROTOCOL / 01</div><h2>ABOMINATION<br><span>ARENA</span></h2><p>Оцелей 60 секунди във всяка вълна.<br>Избери подобрение и посрещни следващата.</p><button class="primary-button" id="start">ВЛЕЗ В АРЕНАТА <span>↗</span></button><div class="overlay-note">' + (touch.enabled ? 'ПЛЪЗНИ ЗА ДВИЖЕНИЕ · АВТОМАТИЧНА СТРЕЛБА' : 'WASD ЗА ДВИЖЕНИЕ · ЗАДРЪЖ ЛЯВ БУТОН ЗА СТРЕЛБА') + '</div>';
     $('start').addEventListener('click', start);
   } else if (game.state === 'paused') {
     content.innerHTML = '<div class="overlay-badge">ПРОТОКОЛЪТ Е ЗАДЪРЖАН</div><h2>Поеми <span>въздух.</span></h2><p>Арената ще те изчака.</p><button class="primary-button" id="resume">ПРОДЪЛЖИ <span>→</span></button>';
     $('resume').addEventListener('click', pause);
   } else if (game.state === 'upgrade') {
-    content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Избери подобрение. Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+40% от базовите щети<br>за всички оръжия</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
+    content.innerHTML = '<div class="overlay-badge">ВЪЛНА ' + game.wave + ' / ПРЕМИНАТА</div><h2>Адаптирай се. <span>Оцелей.</span></h2><p>Оцеля 60 секунди. Избери подобрение.<br>Всеки избор възстановява 35 живот.</p><div class="upgrade-options"><button class="upgrade" data-upgrade="power"><strong>⌁</strong>Повече сила<small>+40% от базовите щети<br>за всички оръжия</small></button><button class="upgrade" data-upgrade="speed"><strong>»</strong>Бърза стрелба<small>18% по-кратко време<br>между изстрелите</small></button><button class="upgrade" data-upgrade="health"><strong>✚</strong>По-здрава броня<small>+20 максимален<br>живот</small></button></div>';
     content.querySelectorAll('[data-upgrade]').forEach(button => button.addEventListener('click', () => { game.upgrade(button.dataset.upgrade); clearInput(); syncOverlay(); waveToast(); }));
   } else if (game.state === 'gameover') {
     clearInput();
@@ -237,8 +241,14 @@ function updateHUD() {
   const p = game.player;
   $('wave').textContent = String(game.wave).padStart(2, '0');
   $('threat').textContent = game.wave < 3 ? 'НИСЪК' : game.wave < 6 ? 'ВИСОК' : 'КРИТИЧЕН';
-  $('wave-progress').style.width = `${game.waveKills / game.target * 100}%`;
-  $('wave-detail').textContent = `${game.waveKills} / ${game.target} победени чудовища`;
+  const waveElapsed = WAVE_DURATION - game.waveRemaining;
+  $('wave-progress').style.width = `${waveElapsed / WAVE_DURATION * 100}%`;
+  $('wave-track').setAttribute('aria-valuenow', String(Math.floor(waveElapsed)));
+  $('wave-track').setAttribute('aria-valuetext', `${Math.ceil(game.waveRemaining)} секунди до края`);
+  $('wave-countdown').textContent = countdownLabel(game.waveRemaining);
+  $('wave-clock').classList.toggle('urgent', game.state === 'playing' && game.waveRemaining <= 10);
+  $('wave-clock-label').textContent = game.state === 'upgrade' ? 'ВЪЛНАТА Е ПРЕМИНАТА' : game.state === 'paused' ? 'ПАУЗА' : 'ДО КРАЯ НА ВЪЛНАТА';
+  $('wave-detail').textContent = `${game.waveKills} победени · ${game.enemies.length} активни`;
   $('health-number').textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
   $('health').style.width = `${p.hp / p.maxHp * 100}%`;
   $('health').style.background = p.hp < 30 ? '#ff6788' : '#a1f5ca';
@@ -455,7 +465,7 @@ function drawEnemyIndicators(camera) {
   }
 }
 function frame(timestamp) {
-  const dt = Math.min(.05, lastTime ? (timestamp - lastTime) / 1000 : 0);
+  const dt = lastTime ? Math.max(0, (timestamp - lastTime) / 1000) : 0;
   lastTime = timestamp;
   const aim = screenToWorld(pointer, cameraFor(game.player));
   let aimX = aim.x, aimY = aim.y;

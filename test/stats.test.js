@@ -100,13 +100,13 @@ test('upgrades preserve combat totals, count valid selections and record actual 
   const game = arena(); game.player.hp = 90;
   game.enemies.push(enemy('crawler', { hp: 25 }));
   game.step(.05, { fire: true, aimX: 100, aimY: 0 });
-  game.state = 'upgrade'; game.upgrade('invalid');
+  game.waveRemaining = .01; game.step(.01); game.upgrade('invalid');
   assert.equal(game.state, 'upgrade');
   game.upgrade('health');
   assert.equal(game.player.hp, 120); assert.equal(game.stats.healing, 30);
-  game.state = 'upgrade'; game.upgrade('power');
+  game.waveRemaining = .01; game.step(.01); game.upgrade('power');
   assert.equal(game.stats.healing, 30);
-  game.player.hp = 108; game.state = 'upgrade'; game.upgrade('speed');
+  game.player.hp = 108; game.waveRemaining = .01; game.step(.01); game.upgrade('speed');
   const report = game.getRunReport();
   assert.equal(report.healing, 42); assert.equal(report.maxHp, 120);
   assert.equal(report.wave, 4); assert.equal(report.completedWaves, 3);

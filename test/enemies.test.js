@@ -177,7 +177,7 @@ test('pausing freezes attack warnings, projectiles and curses; relocation cancel
 test('wave completion clears deployed hazards; upgrade and restart reset spell state', () => {
   const game = arena('shaman', 65), shaman = game.enemies[0];
   shaman.hp = 25; shaman.speed = 0; shaman.cooldown = 10;
-  game.waveKills = game.target - 1; game.spawned = game.target;
+  game.waveRemaining = .05;
   game.zones.push(zone({ x: 200 })); game.hostileBullets.push(bolt({ y: 200 }));
   game.step(.05, { fire: true, aimX: 100, aimY: 0 });
   assert.equal(game.state, 'upgrade'); assert.equal(game.kills, 1);

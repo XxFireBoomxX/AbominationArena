@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Arena, WIDTH, HEIGHT } from '../src/engine.js';
+import { Arena, WIDTH, HEIGHT, WAVE_DURATION } from '../src/engine.js';
 import { cameraFor, inView, screenToWorld } from '../src/world.js';
 
 function arena() {
@@ -48,10 +48,9 @@ test('contact damage has an invulnerability period; dash prevents damage and has
   assert.ok(dodging.player.dashCooldown < remaining);
 });
 
-test('completing a wave opens upgrades, then advances difficulty and restores health', () => {
+test('surviving the time limit opens upgrades, then starts a fresh minute and restores health', () => {
   const game = arena();
-  game.waveKills = game.target - 1;
-  game.spawned = game.target;
+  game.waveRemaining = .05;
   game.player.hp = 50;
   game.enemies.push(enemy());
   game.step(.05, { fire: true, aimX: WIDTH, aimY: 0 });
@@ -65,7 +64,8 @@ test('completing a wave opens upgrades, then advances difficulty and restores he
   assert.equal(game.wave, 2);
   assert.equal(game.damage, 35);
   assert.equal(game.player.hp, 85);
-  assert.equal(game.target, 12);
+  assert.equal(game.waveRemaining, WAVE_DURATION);
+  assert.equal(game.completedWaves, 1);
   assert.equal(game.spawned, 0);
 });
 
@@ -142,20 +142,22 @@ test('far pursuers are repositioned without losing health or changing wave progr
   game.player.x = -9000;
   game.player.y = -7000;
   game.enemies.push(enemy({ x: 20000, y: 20000, hp: 10 }));
-  game.spawned = game.target;
-  game.waveKills = game.target - 1;
+  game.spawned = 20;
+  game.waveKills = 19;
   game.step(.01);
   assert.equal(game.enemies[0].hp, 10);
-  assert.equal(game.spawned, game.target);
-  assert.equal(game.waveKills, game.target - 1);
+  assert.equal(game.spawned, 20);
+  assert.equal(game.waveKills, 19);
   assert.equal(game.score, 0);
   assert.equal(game.state, 'playing');
   assert.ok(Math.hypot(game.enemies[0].x - game.player.x, game.enemies[0].y - game.player.y) < WIDTH);
-  // The last enemy remains killable, so travelling cannot strand the wave.
+  // Relocated enemies remain killable; killing them does not end the minute.
   game.enemies[0].x = game.player.x + 65;
   game.enemies[0].y = game.player.y;
   game.step(.05, { fire: true, aimX: game.player.x + 100, aimY: game.player.y });
-  assert.equal(game.state, 'upgrade');
+  assert.equal(game.state, 'playing');
+  assert.equal(game.waveKills, 20);
+  assert.equal(game.enemies.length, 0);
 });
 
 test('screen targeting keeps the same direction as the camera follows the player', () => {
